@@ -1,3 +1,7 @@
+if (typeof window !== 'undefined' && !(window as any).global) {
+  (window as any).global = window;
+}
+
 import { Injectable } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { Client, IMessage } from '@stomp/stompjs';
