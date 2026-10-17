@@ -1,0 +1,118 @@
+spring:
+  application:
+    name: voteuasz-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Africa/Dakar
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api/v1
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# Configuration de la sécurité et des jetons JWT
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration-ms: ${JWT_EXPIRATION_MS:900000}          # 15 minutes
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:86400000} # 24 heures
+  otp:
+    expiration-seconds: ${OTP_EXPIRATION_SECONDS:300}   # 5 minutes
+    max-attempts: ${OTP_MAX_ATTEMPTS:3}
+    cooldown-seconds: 60
+    provider: ${OTP_PROVIDER:mock}
+  security:
+    initial-admin:
+      email: ${INITIAL_ADMIN_EMAIL:admin.electoral@uasz.sn}
+      password: ${INITIAL_ADMIN_PASSWORD:AdminUasz2026!Securise}
+      nom: ${INITIAL_ADMIN_NOM:Super Admin}
+      prenom: ${INITIAL_ADMIN_PRENOM:Commission UASZ}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:8080}
+  upload:
+    dir: ${UPLOAD_DIR:./uploads}
+
+# Documentation OpenAPI 3
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+
+---
+# PROFIL DEV (PostgreSQL local avec repli H2 automatique si absent)
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:voteuasz_db}?sslmode=${POSTGRES_SSL_MODE:disable}}
+    username: ${POSTGRES_USER:voteuasz_user}
+    password: ${POSTGRES_PASSWORD:voteuasz_secret_password_change_me}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Africa/Dakar
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+---
+# PROFIL TEST (H2 In-Memory avec mode PostgreSQL pour tests unitaires & intégration ultra-rapides)
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:voteuasz_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  flyway:
+    enabled: false
+
+---
+# PROFIL PROD (PostgreSQL managé strict, Flyway obligatoire, logs audités)
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:voteuasz_db}?sslmode=require}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration

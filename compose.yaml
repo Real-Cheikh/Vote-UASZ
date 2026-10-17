@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: voteuasz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-voteuasz_db}
+      POSTGRES_USER: ${POSTGRES_USER:-voteuasz_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voteuasz_secret_password_change_me}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voteuasz_user} -d ${POSTGRES_DB:-voteuasz_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - voteuasz-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voteuasz-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-voteuasz_db}
+      POSTGRES_USER: ${POSTGRES_USER:-voteuasz_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voteuasz_secret_password_change_me}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:80}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - voteuasz-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voteuasz-frontend
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    networks:
+      - voteuasz-network
+
+volumes:
+  postgres_data:
+  backend_uploads:
+
+networks:
+  voteuasz-network:
+    driver: bridge
