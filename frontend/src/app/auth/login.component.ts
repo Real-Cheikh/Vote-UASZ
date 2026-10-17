@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { finalize } from 'rxjs';
 import { AuthService } from '../core/services/auth.service';
 
 @Component({
@@ -185,19 +186,38 @@ export class LoginComponent {
     this.loading = true;
     this.errorMessage = '';
 
-    this.authService.login(this.email, this.password).subscribe({
-      next: (res) => {
+    this.authService.login(this.email.trim(), this.password)
+      .pipe(finalize(() => {
         this.loading = false;
-        if (this.authService.isCommission()) {
-          this.router.navigate(['/admin']);
-        } else {
-          this.router.navigate(['/dashboard']);
+      }))
+      .subscribe({
+        next: (res) => {
+          if (res.success && res.data) {
+            const destination = this.authService.isCommission() ? '/admin' : '/dashboard';
+            this.router.navigate([destination]).then((success) => {
+              if (!success) {
+                console.warn('Navigation vers ' + destination + ' bloquée, redirection vers /dashboard');
+                this.router.navigate(['/dashboard']);
+              }
+            }).catch((navErr) => {
+              console.error('Erreur lors de la redirection :', navErr);
+              this.router.navigate(['/dashboard']);
+            });
+          } else {
+            this.errorMessage = res.message || 'Authentification échouée.';
+          }
+        },
+        error: (err) => {
+          if (err.status === 401) {
+            this.errorMessage = err.error?.message || 'Identifiants invalides ou compte suspendu.';
+          } else if (err.status === 0) {
+            this.errorMessage = 'Impossible de joindre le serveur. Vérifiez que les conteneurs sont actifs.';
+          } else if (err.status >= 500) {
+            this.errorMessage = 'Erreur interne du serveur lors de la connexion. Veuillez réessayer.';
+          } else {
+            this.errorMessage = err.error?.message || 'Une erreur est survenue lors de la connexion.';
+          }
         }
-      },
-      error: (err) => {
-        this.loading = false;
-        this.errorMessage = err.error?.message || 'Identifiants invalides ou compte inactif.';
-      }
-    });
+      });
   }
 }
