@@ -6,6 +6,7 @@ import { timeout, finalize } from 'rxjs';
 import { ApiService } from '../core/services/api.service';
 import { AuthService } from '../core/services/auth.service';
 import { Candidacy, Election } from '../core/models/models';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-candidacies',
@@ -431,7 +432,7 @@ import { Candidacy, Election } from '../core/models/models';
                           @for (d of c.documents; track d.id) {
                             <div class="document-badge flex-between" style="gap: 0.5rem; background: #f1f5f9; padding: 0.35rem 0.65rem; border-radius: 4px; font-size: 0.8rem;">
                               <span>📄 <strong>{{ d.typeDocument }} :</strong> {{ d.nomFichierOriginal }}</span>
-                              <a [href]="'/api/v1/candidacies/documents/file/' + d.cheminFichier" target="_blank" class="btn btn-outline btn-xs" style="padding: 0.1rem 0.35rem;">
+                              <a [href]="getDocumentUrl(d.cheminFichier)" target="_blank" class="btn btn-outline btn-xs" style="padding: 0.1rem 0.35rem;">
                                 📥 Voir
                               </a>
                             </div>
@@ -930,5 +931,9 @@ export class CandidaciesComponent implements OnInit {
       case 'SUBMITTED': return '#f59e0b';
       default: return '#94a3b8';
     }
+  }
+
+  getDocumentUrl(path: string): string {
+    return `${environment.apiUrl}/candidacies/documents/file/${path}`;
   }
 }

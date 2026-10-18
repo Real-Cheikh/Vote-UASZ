@@ -2,12 +2,13 @@ import { Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { ApiResponse, LoginResponse, User } from '../models/models';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly apiUrl = '/api/v1/auth';
+  private readonly apiUrl = `${environment.apiUrl}/auth`;
   private readonly TOKEN_KEY = 'voteuasz_token';
   private readonly USER_KEY = 'voteuasz_user';
 

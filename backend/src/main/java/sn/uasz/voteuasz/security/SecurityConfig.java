@@ -30,9 +30,12 @@ public class SecurityConfig {
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
-            @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080}") String[] allowedOrigins) {
+            @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080,https://*.vercel.app,https://vote-uasz-git-main-real-cheikh.vercel.app}") String[] allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
-        this.allowedOrigins = Arrays.asList(allowedOrigins);
+        this.allowedOrigins = Arrays.stream(allowedOrigins)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     @Bean
@@ -87,9 +90,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOriginPatterns(this.allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);

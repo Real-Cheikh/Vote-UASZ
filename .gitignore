@@ -31,6 +31,8 @@ yarn-error.log*
 
 # Environment and sensitive data
 .env
+.env.*
+!.env.example
 *.local
 backend/uploads/
 logs/

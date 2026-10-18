@@ -192,15 +192,15 @@ export class LoginComponent {
       }))
       .subscribe({
         next: (res) => {
+          this.loading = false;
           if (res.success && res.data) {
             const destination = this.authService.isCommission() ? '/admin' : '/dashboard';
             this.router.navigate([destination]).then((success) => {
               if (!success) {
-                console.warn('Navigation vers ' + destination + ' bloquée, redirection vers /dashboard');
+                console.warn('Navigation vers ' + destination + ' redirigée vers /dashboard');
                 this.router.navigate(['/dashboard']);
               }
-            }).catch((navErr) => {
-              console.error('Erreur lors de la redirection :', navErr);
+            }).catch(() => {
               this.router.navigate(['/dashboard']);
             });
           } else {
@@ -208,14 +208,21 @@ export class LoginComponent {
           }
         },
         error: (err) => {
+          this.loading = false;
           if (err.status === 401) {
-            this.errorMessage = err.error?.message || 'Identifiants invalides ou compte suspendu.';
+            this.errorMessage = err.error?.message || 'Identifiants invalides (email ou mot de passe incorrect).';
+          } else if (err.status === 403) {
+            this.errorMessage = err.error?.message || 'Accès refusé. Compte non autorisé ou suspendu.';
+          } else if (err.status === 405) {
+            this.errorMessage = 'Méthode non autorisée (405). La requête a ciblé une ressource statique au lieu du backend Render.';
           } else if (err.status === 0) {
-            this.errorMessage = 'Impossible de joindre le serveur. Vérifiez que les conteneurs sont actifs.';
+            this.errorMessage = 'Impossible de joindre le serveur backend (Render). Vérifiez votre connexion ou patientez quelques secondes pendant le réveil du serveur.';
           } else if (err.status >= 500) {
-            this.errorMessage = 'Erreur interne du serveur lors de la connexion. Veuillez réessayer.';
+            this.errorMessage = 'Erreur interne du serveur backend. Veuillez réessayer dans quelques instants.';
           } else {
-            this.errorMessage = err.error?.message || 'Une erreur est survenue lors de la connexion.';
+            this.errorMessage = (typeof err.error === 'object' && err.error?.message)
+              ? err.error.message
+              : `Erreur de connexion (${err.status || 'réseau'}). Veuillez réessayer.`;
           }
         }
       });

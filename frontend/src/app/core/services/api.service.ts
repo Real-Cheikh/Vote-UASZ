@@ -18,11 +18,13 @@ import {
   VoteReceipt
 } from '../models/models';
 
+import { environment } from '../../../environments/environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private readonly baseUrl = '/api/v1';
+  private readonly baseUrl = environment.apiUrl;
 
   private publicElectionsCache$: Observable<ApiResponse<Election[]>> | null = null;
   private publicElectionsCacheTime = 0;

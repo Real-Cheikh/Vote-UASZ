@@ -7,6 +7,7 @@ import { Observable, Subject } from 'rxjs';
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { ElectionResult } from '../models/models';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
@@ -23,7 +24,7 @@ export class WebSocketService {
     }
 
     this.stompClient = new Client({
-      webSocketFactory: () => new SockJS('/api/v1/ws'),
+      webSocketFactory: () => new SockJS(environment.wsUrl),
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
