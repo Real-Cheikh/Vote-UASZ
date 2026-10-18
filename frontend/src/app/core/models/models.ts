@@ -77,6 +77,7 @@ export interface Candidacy {
   id: number;
   electionId: number;
   electionTitre?: string;
+  collegeNom?: string;
   candidat: User;
   professionFoi: string;
   biographie?: string;

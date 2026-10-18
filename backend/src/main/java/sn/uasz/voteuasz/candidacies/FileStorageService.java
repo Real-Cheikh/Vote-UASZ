@@ -31,8 +31,11 @@ public class FileStorageService {
     private static final List<String> ALLOWED_EXTENSIONS = List.of(".pdf", ".png", ".jpg", ".jpeg");
     private static final List<String> ALLOWED_MIME_TYPES = List.of(
             "application/pdf",
+            "application/x-pdf",
             "image/png",
+            "image/x-png",
             "image/jpeg",
+            "image/jpg",
             "image/pjpeg"
     );
 

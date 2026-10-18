@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { ApiService } from '../core/services/api.service';
 import { Election } from '../core/models/models';
@@ -7,31 +8,82 @@ import { Election } from '../core/models/models';
 @Component({
   selector: 'app-election-list',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   template: `
     <div class="container elections-container">
-      <div class="elections-header">
+      <div class="elections-header flex-between">
         <div>
           <h2>Scrutins Universitaires UASZ</h2>
           <p class="subtitle">Consultez l'ensemble des élections ouvertes, à venir et passées de l'établissement.</p>
         </div>
-      </div>
-
-      <!-- Filtres -->
-      <div class="filters-bar">
-        <button class="filter-btn" [class.active]="filter === 'ALL'" (click)="setFilter('ALL')">Tous les scrutins</button>
-        <button class="filter-btn" [class.active]="filter === 'OPEN'" (click)="setFilter('OPEN')">🟢 En cours de vote</button>
-        <button class="filter-btn" [class.active]="filter === 'CANDIDACIES'" (click)="setFilter('CANDIDACIES')">📝 Dépôt candidatures</button>
-        <button class="filter-btn" [class.active]="filter === 'CLOSED'" (click)="setFilter('CLOSED')">📊 Résultats publiés</button>
-      </div>
-
-      @if (loading) {
-        <div class="card text-center" style="padding: 3rem;">
-          <p>Chargement des scrutins...</p>
+        <div class="header-actions">
+          <button class="btn btn-outline btn-sm" (click)="loadElections(true)" [disabled]="loading" title="Actualiser la liste">
+            <span [class.spin]="loading">🔄</span> Actualiser
+          </button>
         </div>
-      } @else if (filteredElections.length === 0) {
+      </div>
+
+      <!-- Filtres et Recherche -->
+      <div class="toolbar-bar">
+        <div class="filters-bar">
+          <button class="filter-btn" [class.active]="filter === 'ALL'" (click)="setFilter('ALL')">
+            Tous ({{ elections.length }})
+          </button>
+          <button class="filter-btn" [class.active]="filter === 'OPEN'" (click)="setFilter('OPEN')">
+            🟢 En cours de vote
+          </button>
+          <button class="filter-btn" [class.active]="filter === 'CANDIDACIES'" (click)="setFilter('CANDIDACIES')">
+            📝 Dépôt candidatures
+          </button>
+          <button class="filter-btn" [class.active]="filter === 'CLOSED'" (click)="setFilter('CLOSED')">
+            📊 Résultats publiés
+          </button>
+        </div>
+
+        <div class="search-box">
+          <input
+            type="text"
+            class="form-control form-control-sm search-input"
+            placeholder="Rechercher par titre ou collège..."
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="applyFilter()"
+          />
+          @if (searchQuery) {
+            <button class="search-clear-btn" (click)="searchQuery = ''; applyFilter()">✕</button>
+          }
+        </div>
+      </div>
+
+      <!-- État d'erreur -->
+      @if (errorMessage) {
+        <div class="card error-card">
+          <div class="error-content">
+            <span class="error-icon">⚠️</span>
+            <div>
+              <h4>Erreur de chargement des scrutins</h4>
+              <p>{{ errorMessage }}</p>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" (click)="loadElections(true)">
+            🔄 Réessayer
+          </button>
+        </div>
+      }
+
+      <!-- État de chargement -->
+      @if (loading && elections.length === 0) {
+        <div class="card text-center loading-card">
+          <div class="spinner"></div>
+          <p class="loading-text">Chargement instantané des scrutins universitaires...</p>
+        </div>
+      } @else if (!errorMessage && filteredElections.length === 0) {
         <div class="card text-center" style="padding: 3rem;">
-          <p>Aucun scrutin ne correspond au filtre sélectionné.</p>
+          <p class="empty-text">Aucun scrutin ne correspond à votre recherche ou filtre.</p>
+          @if (searchQuery || filter !== 'ALL') {
+            <button class="btn btn-outline btn-sm" style="margin-top: 1rem;" (click)="resetFilters()">
+              Réinitialiser les filtres
+            </button>
+          }
         </div>
       } @else {
         <div class="grid grid-cols-2">
@@ -52,7 +104,7 @@ import { Election } from '../core/models/models';
               <p class="election-desc">{{ e.description || 'Scrutin universitaire officiel régi par la Commission électorale UASZ.' }}</p>
 
               <div class="election-meta">
-                <div><strong>Collège électoral :</strong> {{ e.college?.nom }} ({{ e.college?.ufr || 'Toutes UFR' }})</div>
+                <div><strong>Collège électoral :</strong> {{ e.college?.nom || 'Général' }} ({{ e.college?.ufr || 'Toutes UFR' }})</div>
                 <div><strong>Ouverture :</strong> {{ e.dateOuverture | date:'dd/MM/yyyy HH:mm' }}</div>
                 <div><strong>Clôture :</strong> {{ e.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
               </div>
@@ -87,16 +139,25 @@ import { Election } from '../core/models/models';
       padding: 2.5rem 1.25rem;
     }
     .elections-header {
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
     .subtitle {
       color: var(--text-muted);
       font-size: 0.95rem;
     }
+    .toolbar-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
     .filters-bar {
       display: flex;
-      gap: 0.75rem;
-      margin-bottom: 2rem;
+      gap: 0.5rem;
       flex-wrap: wrap;
     }
     .filter-btn {
@@ -115,10 +176,29 @@ import { Election } from '../core/models/models';
       color: #ffffff;
       border-color: var(--primary);
     }
+    .search-box {
+      position: relative;
+      min-width: 280px;
+    }
+    .search-input {
+      padding-right: 2rem;
+      border-radius: 9999px;
+    }
+    .search-clear-btn {
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
     .flex-between {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
     }
     .election-desc {
       font-size: 0.9rem;
@@ -139,6 +219,51 @@ import { Election } from '../core/models/models';
     .btn-block {
       width: 100%;
     }
+    .error-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .error-content {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .error-icon {
+      font-size: 1.75rem;
+    }
+    .loading-card {
+      padding: 4rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .loading-text {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    .spin {
+      display: inline-block;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   `]
 })
 export class ElectionListComponent implements OnInit {
@@ -148,9 +273,18 @@ export class ElectionListComponent implements OnInit {
   filteredElections: Election[] = [];
   loading = true;
   filter: 'ALL' | 'OPEN' | 'CANDIDACIES' | 'CLOSED' = 'ALL';
+  searchQuery = '';
+  errorMessage = '';
 
   ngOnInit(): void {
-    this.apiService.getPublicElections().subscribe({
+    this.loadElections(false);
+  }
+
+  loadElections(forceReload: boolean = false): void {
+    this.loading = true;
+    this.errorMessage = '';
+
+    this.apiService.getPublicElections(forceReload).subscribe({
       next: (res) => {
         this.loading = false;
         if (res.success && res.data) {
@@ -158,8 +292,9 @@ export class ElectionListComponent implements OnInit {
           this.applyFilter();
         }
       },
-      error: () => {
+      error: (err) => {
         this.loading = false;
+        this.errorMessage = err.error?.message || 'Impossible de joindre le serveur électoral. Veuillez vérifier votre connexion.';
       }
     });
   }
@@ -169,16 +304,34 @@ export class ElectionListComponent implements OnInit {
     this.applyFilter();
   }
 
+  resetFilters(): void {
+    this.filter = 'ALL';
+    this.searchQuery = '';
+    this.applyFilter();
+  }
+
   applyFilter(): void {
-    if (this.filter === 'ALL') {
-      this.filteredElections = this.elections;
-    } else if (this.filter === 'OPEN') {
-      this.filteredElections = this.elections.filter(e => e.statut === 'VOTING_OPEN');
+    let list = this.elections;
+
+    if (this.filter === 'OPEN') {
+      list = list.filter(e => e.statut === 'VOTING_OPEN');
     } else if (this.filter === 'CANDIDACIES') {
-      this.filteredElections = this.elections.filter(e => e.statut === 'CANDIDATURES_OPEN');
+      list = list.filter(e => e.statut === 'CANDIDATURES_OPEN');
     } else if (this.filter === 'CLOSED') {
-      this.filteredElections = this.elections.filter(e => e.statut === 'RESULTS_PUBLISHED' || e.statut === 'ARCHIVED');
+      list = list.filter(e => e.statut === 'RESULTS_PUBLISHED' || e.statut === 'ARCHIVED');
     }
+
+    if (this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase().trim();
+      list = list.filter(e =>
+        (e.titre && e.titre.toLowerCase().includes(q)) ||
+        (e.description && e.description.toLowerCase().includes(q)) ||
+        (e.college?.nom && e.college.nom.toLowerCase().includes(q)) ||
+        (e.type && e.type.toLowerCase().includes(q))
+      );
+    }
+
+    this.filteredElections = list;
   }
 
   getStatusBadgeClass(statut: string): string {

@@ -44,8 +44,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Endpoints publics (authentification, consultation basique, vérification)
                         .requestMatchers("/auth/login", "/auth/refresh").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/elections/public/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/candidacies/public/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/elections/public", "/elections/public/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/candidacies/public", "/candidacies/public/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/candidacies/documents/file/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/results/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/voting/verify-receipt/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/reports/verify/**").permitAll()
@@ -67,7 +68,7 @@ public class SecurityConfig {
                         .hasAnyRole("COMMISSION_ELECTORALE", "SUPER_ADMIN_ELECTORAL")
 
                         // Candidats (gestion de leur dossier et campagne)
-                        .requestMatchers("/candidacies/apply", "/candidacies/my/**", "/campaigns/my/**")
+                        .requestMatchers("/candidacies/apply", "/candidacies/my", "/candidacies/my/**", "/campaigns/my/**")
                         .hasAnyRole("CANDIDAT", "ELECTEUR", "SUPER_ADMIN_ELECTORAL")
 
                         // Tous les autres endpoints requièrent une authentification valide

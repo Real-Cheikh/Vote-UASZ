@@ -11,6 +11,7 @@ public class CandidacyDto {
     private Long id;
     private Long electionId;
     private String electionTitre;
+    private String collegeNom;
     private UserDto candidat;
     private String professionFoi;
     private String biographie;
@@ -30,6 +31,9 @@ public class CandidacyDto {
         if (candidacy.getElection() != null) {
             dto.setElectionId(candidacy.getElection().getId());
             dto.setElectionTitre(candidacy.getElection().getTitre());
+            if (candidacy.getElection().getCollege() != null) {
+                dto.setCollegeNom(candidacy.getElection().getCollege().getNom());
+            }
         }
         if (candidacy.getCandidat() != null) {
             dto.setCandidat(UserDto.fromEntity(candidacy.getCandidat()));
@@ -47,6 +51,33 @@ public class CandidacyDto {
                     .map(CandidateDocumentDto::fromEntity)
                     .collect(Collectors.toList()));
         }
+        return dto;
+    }
+
+    public static CandidacyDto fromEntityPublic(Candidacy candidacy) {
+        CandidacyDto dto = new CandidacyDto();
+        dto.setId(candidacy.getId());
+        if (candidacy.getElection() != null) {
+            dto.setElectionId(candidacy.getElection().getId());
+            dto.setElectionTitre(candidacy.getElection().getTitre());
+            if (candidacy.getElection().getCollege() != null) {
+                dto.setCollegeNom(candidacy.getElection().getCollege().getNom());
+            }
+        }
+        if (candidacy.getCandidat() != null) {
+            UserDto publicUser = new UserDto();
+            publicUser.setId(candidacy.getCandidat().getId());
+            publicUser.setNom(candidacy.getCandidat().getNom());
+            publicUser.setPrenom(candidacy.getCandidat().getPrenom());
+            publicUser.setCategorie(candidacy.getCandidat().getCategorie());
+            dto.setCandidat(publicUser);
+        }
+        dto.setProfessionFoi(candidacy.getProfessionFoi());
+        dto.setBiographie(candidacy.getBiographie());
+        dto.setPhotoUrl(candidacy.getPhotoUrl());
+        dto.setStatut(candidacy.getStatut());
+        dto.setDateSoumission(candidacy.getDateSoumission());
+        dto.setDocuments(List.of()); // Non-divulgation des pièces justificatives au grand public
         return dto;
     }
 
@@ -72,6 +103,14 @@ public class CandidacyDto {
 
     public void setElectionTitre(String electionTitre) {
         this.electionTitre = electionTitre;
+    }
+
+    public String getCollegeNom() {
+        return collegeNom;
+    }
+
+    public void setCollegeNom(String collegeNom) {
+        this.collegeNom = collegeNom;
     }
 
     public UserDto getCandidat() {

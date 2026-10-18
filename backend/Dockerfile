@@ -1,19 +1,4 @@
-# Étape 1 : Construction de l'application
-FROM eclipse-temurin:21-jdk-alpine AS builder
-WORKDIR /app
-
-# Copie des configurations Maven et du code source
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-RUN chmod +x mvnw
-# Téléchargement des dépendances hors ligne
-RUN ./mvnw dependency:go-offline -B
-
-COPY src ./src
-# Compilation du JAR exécutable en ignorant les tests pour accélérer le build Docker
-RUN ./mvnw clean package -DskipTests -B
-
-# Étape 2 : Image d'exécution légère et sécurisée
+# Image d'exécution légère et sécurisée
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
@@ -25,7 +10,7 @@ RUN mkdir -p /app/uploads && chown -R voteuasz:uasz /app
 
 USER voteuasz
 
-COPY --from=builder /app/target/*.jar app.jar
+COPY target/*.jar app.jar
 
 ENV SPRING_PROFILES_ACTIVE=prod
 ENV SERVER_PORT=8080

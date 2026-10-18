@@ -10,7 +10,7 @@ spring:
   servlet:
     multipart:
       max-file-size: 10MB
-      max-request-size: 15MB
+      max-request-size: 25MB
 
 server:
   port: ${SERVER_PORT:8080}
@@ -62,6 +62,13 @@ spring:
     username: ${POSTGRES_USER:voteuasz_user}
     password: ${POSTGRES_PASSWORD:voteuasz_secret_password_change_me}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: VoteUaszHikariPool-Dev
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -103,10 +110,17 @@ spring:
     activate:
       on-profile: prod
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:voteuasz_db}?sslmode=require}
+    url: ${DATABASE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:voteuasz_db}?sslmode=${POSTGRES_SSL_MODE:disable}}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: VoteUaszHikariPool-Prod
+      maximum-pool-size: 15
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:

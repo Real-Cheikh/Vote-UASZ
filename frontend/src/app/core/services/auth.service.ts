@@ -11,13 +11,16 @@ export class AuthService {
   private readonly TOKEN_KEY = 'voteuasz_token';
   private readonly USER_KEY = 'voteuasz_user';
 
-  // Signals réactifs Angular
-  private tokenSignal = signal<string | null>(localStorage.getItem(this.TOKEN_KEY));
+  // Signals réactifs Angular avec validation de validité temporelle du JWT
+  private tokenSignal = signal<string | null>(this.getInitialToken());
   private userSignal = signal<User | null>(this.getStoredUser());
 
   public token = this.tokenSignal.asReadonly();
   public currentUser = this.userSignal.asReadonly();
-  public isAuthenticated = computed(() => !!this.tokenSignal());
+  public isAuthenticated = computed(() => {
+    const t = this.tokenSignal();
+    return !!t && !this.isTokenExpired(t);
+  });
 
   public isSuperAdmin = computed(() => this.hasRole('ROLE_SUPER_ADMIN_ELECTORAL'));
   public isCommission = computed(() => this.hasRole('ROLE_COMMISSION_ELECTORALE') || this.isSuperAdmin());
@@ -70,7 +73,32 @@ export class AuthService {
     this.userSignal.set(userObj);
   }
 
+  private getInitialToken(): string | null {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    const token = localStorage.getItem(this.TOKEN_KEY);
+    if (!token || this.isTokenExpired(token)) {
+      localStorage.removeItem(this.TOKEN_KEY);
+      localStorage.removeItem(this.USER_KEY);
+      return null;
+    }
+    return token;
+  }
+
+  public isTokenExpired(token: string | null): boolean {
+    if (!token) return true;
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return true;
+      const payload = JSON.parse(atob(parts[1]));
+      if (!payload.exp) return false;
+      return payload.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
+  }
+
   private getStoredUser(): User | null {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
     const data = localStorage.getItem(this.USER_KEY);
     if (!data) return null;
     try {

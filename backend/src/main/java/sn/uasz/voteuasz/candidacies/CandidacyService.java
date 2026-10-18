@@ -51,8 +51,17 @@ public class CandidacyService {
 
     @Transactional(readOnly = true)
     public List<CandidacyDto> findPublicCandidatesByElection(Long electionId) {
-        return candidacyRepository.findByElectionIdAndStatut(electionId, CandidacyStatus.VALIDATED).stream()
-                .map(CandidacyDto::fromEntity)
+        return candidacyRepository.findByElectionId(electionId).stream()
+                .filter(c -> c.getStatut() != CandidacyStatus.REJECTED && c.getStatut() != CandidacyStatus.WITHDRAWN)
+                .map(CandidacyDto::fromEntityPublic)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidacyDto> findAllPublicCandidates() {
+        return candidacyRepository.findAll().stream()
+                .filter(c -> c.getStatut() != CandidacyStatus.REJECTED && c.getStatut() != CandidacyStatus.WITHDRAWN)
+                .map(CandidacyDto::fromEntityPublic)
                 .collect(Collectors.toList());
     }
 
@@ -67,18 +76,65 @@ public class CandidacyService {
     public CandidacyDto findById(Long id) {
         Candidacy candidacy = candidacyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidature introuvable avec l'id : " + id));
-        return CandidacyDto.fromEntity(candidacy);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isPrivileged = false;
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserPrincipal principal) {
+            boolean isOwner = candidacy.getCandidat().getId().equals(principal.getId());
+            boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN_ELECTORAL") || a.getAuthority().equals("ROLE_COMMISSION_ELECTORALE"));
+            isPrivileged = isOwner || isAdmin;
+        }
+
+        return isPrivileged ? CandidacyDto.fromEntity(candidacy) : CandidacyDto.fromEntityPublic(candidacy);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidacyDto> findMyCandidacies() {
+        User currentUser = getCurrentAuthenticatedUser();
+        return candidacyRepository.findByCandidatId(currentUser.getId()).stream()
+                .map(CandidacyDto::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CandidacyDto findMyCandidacyByElection(Long electionId) {
+        User currentUser = getCurrentAuthenticatedUser();
+        return candidacyRepository.findByElectionIdAndCandidatId(electionId, currentUser.getId())
+                .map(CandidacyDto::fromEntity)
+                .orElse(null);
     }
 
     @Transactional
     public CandidacyDto apply(CandidacyApplyDto dto) {
+        return applyWithDocuments(dto.getElectionId(), dto.getProfessionFoi(), dto.getBiographie(), null, null);
+    }
+
+    @Transactional
+    public CandidacyDto applyWithDocuments(Long electionId, String professionFoi, String biographie, MultipartFile cvFile, MultipartFile photoFile) {
         User currentUser = getCurrentAuthenticatedUser();
 
-        Election election = electionRepository.findById(dto.getElectionId())
-                .orElseThrow(() -> new ResourceNotFoundException("Élection introuvable avec l'id : " + dto.getElectionId()));
+        if (!currentUser.isActif() || currentUser.isBloque()) {
+            throw new BusinessException("Votre compte est inactif ou verrouillé par l'administration électorale.");
+        }
+
+        Election election = electionRepository.findById(electionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Élection introuvable avec l'id : " + electionId));
 
         if (election.getStatut() != ElectionStatus.CANDIDATURES_OPEN) {
             throw new BusinessException("Le dépôt de candidatures est actuellement fermé pour ce scrutin");
+        }
+
+        boolean isSuperAdmin = currentUser.getRoles().stream()
+                .anyMatch(r -> r.getName() == RoleName.ROLE_SUPER_ADMIN_ELECTORAL || r.getName() == RoleName.ROLE_COMMISSION_ELECTORALE);
+
+        if (!isSuperAdmin && election.getCollege() != null && election.getCollege().getCategorie() != null) {
+            if (election.getCollege().getCategorie() != currentUser.getCategorie()) {
+                throw new BusinessException(String.format(
+                        "Votre catégorie (%s) ne correspond pas au collège électoral de ce scrutin (%s)",
+                        currentUser.getCategorie(), election.getCollege().getNom()
+                ));
+            }
         }
 
         if (candidacyRepository.existsByElectionIdAndCandidatId(election.getId(), currentUser.getId())) {
@@ -88,12 +144,53 @@ public class CandidacyService {
         Candidacy candidacy = new Candidacy();
         candidacy.setElection(election);
         candidacy.setCandidat(currentUser);
-        candidacy.setProfessionFoi(dto.getProfessionFoi());
-        candidacy.setBiographie(dto.getBiographie());
+        candidacy.setProfessionFoi(professionFoi);
+        candidacy.setBiographie(biographie);
         candidacy.setStatut(CandidacyStatus.SUBMITTED);
         candidacy.setDateSoumission(OffsetDateTime.now());
 
+        // Attribuer le rôle CANDIDAT si non présent
+        Role candidateRole = roleRepository.findByName(RoleName.ROLE_CANDIDAT)
+                .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_CANDIDAT, "Candidat aux scrutins")));
+        if (!currentUser.getRoles().contains(candidateRole)) {
+            currentUser.addRole(candidateRole);
+            userRepository.save(currentUser);
+        }
+
         Candidacy saved = candidacyRepository.save(candidacy);
+
+        // Traitement de la pièce jointe CV si fournie
+        if (cvFile != null && !cvFile.isEmpty()) {
+            String cvStoredFilename = fileStorageService.storeFile(cvFile);
+            CandidateDocument cvDoc = new CandidateDocument();
+            cvDoc.setCandidacy(saved);
+            cvDoc.setTypeDocument(DocumentType.CV);
+            cvDoc.setNomFichierOriginal(cvFile.getOriginalFilename());
+            cvDoc.setCheminFichier(cvStoredFilename);
+            cvDoc.setTypeMime(cvFile.getContentType());
+            cvDoc.setTailleOctets(cvFile.getSize());
+            cvDoc.setDateUpload(OffsetDateTime.now());
+            documentRepository.save(cvDoc);
+            saved.getDocuments().add(cvDoc);
+        }
+
+        // Traitement de la photo de campagne si fournie
+        if (photoFile != null && !photoFile.isEmpty()) {
+            String photoStoredFilename = fileStorageService.storeFile(photoFile);
+            CandidateDocument photoDoc = new CandidateDocument();
+            photoDoc.setCandidacy(saved);
+            photoDoc.setTypeDocument(DocumentType.PHOTO);
+            photoDoc.setNomFichierOriginal(photoFile.getOriginalFilename());
+            photoDoc.setCheminFichier(photoStoredFilename);
+            photoDoc.setTypeMime(photoFile.getContentType());
+            photoDoc.setTailleOctets(photoFile.getSize());
+            photoDoc.setDateUpload(OffsetDateTime.now());
+            documentRepository.save(photoDoc);
+            saved.getDocuments().add(photoDoc);
+            saved.setPhotoUrl("/api/v1/candidacies/documents/file/" + photoStoredFilename);
+            saved = candidacyRepository.save(saved);
+        }
+
         auditService.logEvent("CANDIDACY_SUBMITTED", "Dépôt de candidature par " + currentUser.getEmail(), election.getId(), "SUCCESS");
 
         return CandidacyDto.fromEntity(saved);

@@ -46,7 +46,7 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
         <div class="card" style="margin-bottom: 2rem;">
           <div class="flex-between">
             <h3>Scrutins Électoraux Configurés</h3>
-            <button class="btn btn-primary btn-sm" (click)="showCreateModal = !showCreateModal">
+            <button class="btn btn-primary btn-sm" (click)="toggleCreateModal()">
               + Configurer un Nouveau Scrutin
             </button>
           </div>
@@ -70,12 +70,33 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                     </select>
                   </div>
                   <div class="form-group">
-                    <label class="form-label">Collège Électoral</label>
-                    <select class="form-control" [(ngModel)]="newElection.collegeId" name="collegeId" required>
-                      @for (c of colleges; track c.id) {
-                        <option [value]="c.id">{{ c.nom }} ({{ c.categorie }})</option>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                      <label class="form-label" style="margin-bottom: 0;">Collège Électoral *</label>
+                      @if (loadingColleges) {
+                        <span style="font-size: 0.75rem; color: var(--primary);">Chargement...</span>
+                      } @else if (errorColleges) {
+                        <button type="button" class="btn btn-outline btn-xs" (click)="loadColleges()" style="padding: 0.15rem 0.4rem; font-size: 0.75rem;">🔄 Réessayer</button>
+                      }
+                    </div>
+                    <select class="form-control" [(ngModel)]="newElection.collegeId" name="collegeId" required [disabled]="loadingColleges">
+                      @if (loadingColleges) {
+                        <option [value]="null" disabled selected>Chargement des collèges électoraux...</option>
+                      } @else if (errorColleges) {
+                        <option [value]="null" disabled selected>Erreur de chargement des collèges</option>
+                      } @else if (colleges.length === 0) {
+                        <option [value]="null" disabled selected>Aucun collège électoral disponible</option>
+                      } @else {
+                        <option [value]="null" disabled>-- Sélectionner le collège électoral --</option>
+                        @for (c of colleges; track c.id) {
+                          <option [value]="c.id">{{ c.nom }} — [{{ c.categorie }}] ({{ c.ufr || 'Toutes UFR' }})</option>
+                        }
                       }
                     </select>
+                    @if (errorColleges) {
+                      <div style="color: #dc2626; font-size: 0.8rem; margin-top: 0.25rem;">
+                        {{ errorColleges }} — <a href="javascript:void(0)" (click)="loadColleges()" style="text-decoration: underline; color: #dc2626; font-weight: bold;">Réessayer</a>
+                      </div>
+                    }
                   </div>
                   <div class="form-group">
                     <label class="form-label">Vote Blanc Autorisé</label>
@@ -433,6 +454,9 @@ export class AdminComponent implements OnInit {
   auditLogs: AuditEvent[] = [];
 
   showCreateModal = false;
+  loadingColleges = false;
+  errorColleges = '';
+
   newElection = {
     titre: '',
     type: 'DELEGUE',
@@ -452,6 +476,13 @@ export class AdminComponent implements OnInit {
     }
   }
 
+  toggleCreateModal(): void {
+    this.showCreateModal = !this.showCreateModal;
+    if (this.showCreateModal && this.colleges.length === 0) {
+      this.loadColleges();
+    }
+  }
+
   loadElections(): void {
     this.apiService.getAllElections().subscribe((res) => {
       if (res.success && res.data) {
@@ -465,12 +496,21 @@ export class AdminComponent implements OnInit {
   }
 
   loadColleges(): void {
-    this.apiService.getColleges().subscribe((res) => {
-      if (res.success && res.data) {
-        this.colleges = res.data;
-        if (this.colleges.length > 0 && !this.newElection.collegeId) {
-          this.newElection.collegeId = this.colleges[0].id;
+    this.loadingColleges = true;
+    this.errorColleges = '';
+    this.apiService.getColleges().subscribe({
+      next: (res) => {
+        this.loadingColleges = false;
+        if (res.success && res.data) {
+          this.colleges = res.data;
+          if (this.colleges.length > 0 && !this.newElection.collegeId) {
+            this.newElection.collegeId = this.colleges[0].id;
+          }
         }
+      },
+      error: (err) => {
+        this.loadingColleges = false;
+        this.errorColleges = err?.error?.message || 'Impossible de récupérer la liste des collèges électoraux. Vérifiez votre session ou les logs du serveur.';
       }
     });
   }
@@ -519,7 +559,18 @@ export class AdminComponent implements OnInit {
   }
 
   onCreateElection(): void {
-    if (!this.newElection.titre || !this.newElection.collegeId) return;
+    if (!this.newElection.titre || !this.newElection.titre.trim()) {
+      alert('Veuillez saisir un titre pour le scrutin.');
+      return;
+    }
+    if (!this.newElection.collegeId) {
+      alert('Veuillez sélectionner un collège électoral valide.');
+      return;
+    }
+    if (!this.newElection.dateOuverture || !this.newElection.dateCloture) {
+      alert("Veuillez renseigner les dates d'ouverture et de clôture du scrutin.");
+      return;
+    }
 
     const payload = {
       ...this.newElection,
@@ -529,7 +580,17 @@ export class AdminComponent implements OnInit {
 
     this.apiService.createElection(payload).subscribe({
       next: () => {
+        alert('Scrutin configuré avec succès !');
         this.showCreateModal = false;
+        this.newElection = {
+          titre: '',
+          type: 'DELEGUE',
+          collegeId: this.colleges.length > 0 ? this.colleges[0].id : null,
+          permettreVoteBlanc: true,
+          dateOuverture: '',
+          dateCloture: '',
+          description: ''
+        };
         this.loadElections();
       },
       error: (err) => {

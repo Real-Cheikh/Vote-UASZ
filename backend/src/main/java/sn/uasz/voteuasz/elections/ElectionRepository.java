@@ -6,12 +6,25 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ElectionRepository extends JpaRepository<Election, Long> {
     List<Election> findByStatut(ElectionStatus statut);
 
     List<Election> findByCollegeId(Long collegeId);
+
+    @Query("SELECT DISTINCT e FROM Election e LEFT JOIN FETCH e.college c LEFT JOIN FETCH e.rules r WHERE e.statut IN :statuts ORDER BY e.dateOuverture DESC")
+    List<Election> findByStatutInWithDetails(@Param("statuts") List<ElectionStatus> statuts);
+
+    @Query("SELECT DISTINCT e FROM Election e LEFT JOIN FETCH e.college c LEFT JOIN FETCH e.rules r ORDER BY e.dateOuverture DESC")
+    List<Election> findAllWithDetails();
+
+    @Query("SELECT e FROM Election e LEFT JOIN FETCH e.college c LEFT JOIN FETCH e.rules r WHERE e.id = :id")
+    Optional<Election> findByIdWithDetails(@Param("id") Long id);
+
+    @Query("SELECT DISTINCT e FROM Election e LEFT JOIN FETCH e.college c LEFT JOIN FETCH e.rules r WHERE e.statut = 'VOTING_OPEN' ORDER BY e.dateCloture ASC")
+    List<Election> findActiveElectionsWithDetails();
 
     @Query("SELECT e FROM Election e WHERE e.statut IN :statuts ORDER BY e.dateOuverture DESC")
     List<Election> findByStatutIn(@Param("statuts") List<ElectionStatus> statuts);

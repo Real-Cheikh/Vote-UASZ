@@ -33,7 +33,7 @@ public class ElectionService {
 
     @Transactional(readOnly = true)
     public List<ElectionDto> findAll() {
-        return electionRepository.findAll().stream()
+        return electionRepository.findAllWithDetails().stream()
                 .map(ElectionDto::fromEntity)
                 .collect(Collectors.toList());
     }
@@ -52,14 +52,14 @@ public class ElectionService {
                 ElectionStatus.RESULTS_PUBLISHED,
                 ElectionStatus.ARCHIVED
         );
-        return electionRepository.findByStatutIn(publicStatuses).stream()
+        return electionRepository.findByStatutInWithDetails(publicStatuses).stream()
                 .map(ElectionDto::fromEntity)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public ElectionDto findById(Long id) {
-        Election election = electionRepository.findById(id)
+        Election election = electionRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Élection introuvable avec l'id : " + id));
         return ElectionDto.fromEntity(election);
     }

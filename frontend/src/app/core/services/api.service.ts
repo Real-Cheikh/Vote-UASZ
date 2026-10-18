@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, shareReplay, tap } from 'rxjs';
 import {
   ApiResponse,
   AuditEvent,
@@ -24,11 +24,30 @@ import {
 export class ApiService {
   private readonly baseUrl = '/api/v1';
 
+  private publicElectionsCache$: Observable<ApiResponse<Election[]>> | null = null;
+  private publicElectionsCacheTime = 0;
+  private readonly CACHE_TTL_MS = 30000; // 30 secondes de cache en mémoire
+
   constructor(private http: HttpClient) {}
 
   // --- Élections ---
-  getPublicElections(): Observable<ApiResponse<Election[]>> {
-    return this.http.get<ApiResponse<Election[]>>(`${this.baseUrl}/elections/public`);
+  getPublicElections(forceReload: boolean = false): Observable<ApiResponse<Election[]>> {
+    const now = Date.now();
+    if (!forceReload && this.publicElectionsCache$ && (now - this.publicElectionsCacheTime < this.CACHE_TTL_MS)) {
+      return this.publicElectionsCache$;
+    }
+
+    this.publicElectionsCacheTime = now;
+    this.publicElectionsCache$ = this.http.get<ApiResponse<Election[]>>(`${this.baseUrl}/elections/public`).pipe(
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+
+    return this.publicElectionsCache$;
+  }
+
+  invalidateElectionsCache(): void {
+    this.publicElectionsCache$ = null;
+    this.publicElectionsCacheTime = 0;
   }
 
   getPublicElectionById(id: number): Observable<ApiResponse<Election>> {
@@ -44,11 +63,15 @@ export class ApiService {
   }
 
   createElection(election: any): Observable<ApiResponse<Election>> {
-    return this.http.post<ApiResponse<Election>>(`${this.baseUrl}/elections/manage`, election);
+    return this.http.post<ApiResponse<Election>>(`${this.baseUrl}/elections/manage`, election).pipe(
+      tap(() => this.invalidateElectionsCache())
+    );
   }
 
   updateElectionStatus(id: number, statut: string, motif?: string): Observable<ApiResponse<Election>> {
-    return this.http.patch<ApiResponse<Election>>(`${this.baseUrl}/elections/manage/${id}/status`, { statut, motif });
+    return this.http.patch<ApiResponse<Election>>(`${this.baseUrl}/elections/manage/${id}/status`, { statut, motif }).pipe(
+      tap(() => this.invalidateElectionsCache())
+    );
   }
 
   // --- Collèges Électoraux ---
@@ -57,6 +80,10 @@ export class ApiService {
   }
 
   // --- Candidatures ---
+  getAllPublicCandidates(): Observable<ApiResponse<Candidacy[]>> {
+    return this.http.get<ApiResponse<Candidacy[]>>(`${this.baseUrl}/candidacies/public`);
+  }
+
   getPublicCandidates(electionId: number): Observable<ApiResponse<Candidacy[]>> {
     return this.http.get<ApiResponse<Candidacy[]>>(`${this.baseUrl}/candidacies/public/election/${electionId}`);
   }
@@ -65,8 +92,20 @@ export class ApiService {
     return this.http.get<ApiResponse<Candidacy[]>>(`${this.baseUrl}/candidacies/election/${electionId}`);
   }
 
+  getMyCandidacies(): Observable<ApiResponse<Candidacy[]>> {
+    return this.http.get<ApiResponse<Candidacy[]>>(`${this.baseUrl}/candidacies/my`);
+  }
+
+  getMyCandidacyForElection(electionId: number): Observable<ApiResponse<Candidacy>> {
+    return this.http.get<ApiResponse<Candidacy>>(`${this.baseUrl}/candidacies/my/election/${electionId}`);
+  }
+
   applyCandidacy(dto: { electionId: number; professionFoi: string; biographie?: string }): Observable<ApiResponse<Candidacy>> {
     return this.http.post<ApiResponse<Candidacy>>(`${this.baseUrl}/candidacies/apply`, dto);
+  }
+
+  applyCandidacyMultipart(formData: FormData): Observable<ApiResponse<Candidacy>> {
+    return this.http.post<ApiResponse<Candidacy>>(`${this.baseUrl}/candidacies/apply`, formData);
   }
 
   uploadCandidacyDocument(candidacyId: number, type: string, file: File): Observable<ApiResponse<CandidateDocument>> {
@@ -117,11 +156,15 @@ export class ApiService {
   }
 
   countVotes(electionId: number): Observable<ApiResponse<ElectionResult>> {
-    return this.http.post<ApiResponse<ElectionResult>>(`${this.baseUrl}/results/count/${electionId}`, {});
+    return this.http.post<ApiResponse<ElectionResult>>(`${this.baseUrl}/results/count/${electionId}`, {}).pipe(
+      tap(() => this.invalidateElectionsCache())
+    );
   }
 
   publishResults(electionId: number): Observable<ApiResponse<ElectionResult>> {
-    return this.http.post<ApiResponse<ElectionResult>>(`${this.baseUrl}/results/publish/${electionId}`, {});
+    return this.http.post<ApiResponse<ElectionResult>>(`${this.baseUrl}/results/publish/${electionId}`, {}).pipe(
+      tap(() => this.invalidateElectionsCache())
+    );
   }
 
   getCommissionResults(electionId: number): Observable<ApiResponse<ElectionResult>> {

@@ -28,10 +28,16 @@ public class CandidacyController {
         this.fileStorageService = fileStorageService;
     }
 
+    @GetMapping("/public")
+    @Operation(summary = "Lister tous les candidats officiels enregistrés")
+    public ResponseEntity<ApiResponse<List<CandidacyDto>>> getAllPublicCandidates() {
+        return ResponseEntity.ok(ApiResponse.ok("Tous les candidats officiels", candidacyService.findAllPublicCandidates()));
+    }
+
     @GetMapping("/public/election/{electionId}")
-    @Operation(summary = "Lister la liste officielle des candidats validés pour un scrutin")
+    @Operation(summary = "Lister la liste officielle des candidats pour un scrutin")
     public ResponseEntity<ApiResponse<List<CandidacyDto>>> getPublicCandidates(@PathVariable Long electionId) {
-        return ResponseEntity.ok(ApiResponse.ok("Candidats officiels validés", candidacyService.findPublicCandidatesByElection(electionId)));
+        return ResponseEntity.ok(ApiResponse.ok("Candidats officiels du scrutin", candidacyService.findPublicCandidatesByElection(electionId)));
     }
 
     @GetMapping("/election/{electionId}")
@@ -47,12 +53,37 @@ public class CandidacyController {
         return ResponseEntity.ok(ApiResponse.ok("Détails de la candidature", candidacyService.findById(id)));
     }
 
-    @PostMapping("/apply")
-    @Operation(summary = "Déposer une candidature à un scrutin ouvert")
-    public ResponseEntity<ApiResponse<CandidacyDto>> apply(@Valid @RequestBody CandidacyApplyDto dto) {
+    @GetMapping("/my")
+    @Operation(summary = "Lister les dossiers de candidature déposés par l'utilisateur connecté")
+    public ResponseEntity<ApiResponse<List<CandidacyDto>>> getMyCandidacies() {
+        return ResponseEntity.ok(ApiResponse.ok("Mes candidatures", candidacyService.findMyCandidacies()));
+    }
+
+    @GetMapping("/my/election/{electionId}")
+    @Operation(summary = "Obtenir mon dossier de candidature pour un scrutin spécifique")
+    public ResponseEntity<ApiResponse<CandidacyDto>> getMyCandidacyByElection(@PathVariable Long electionId) {
+        return ResponseEntity.ok(ApiResponse.ok("Mon dossier de candidature", candidacyService.findMyCandidacyByElection(electionId)));
+    }
+
+    @PostMapping(value = "/apply", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Déposer une candidature à un scrutin ouvert (JSON)")
+    public ResponseEntity<ApiResponse<CandidacyDto>> applyJson(@Valid @RequestBody CandidacyApplyDto dto) {
         CandidacyDto created = candidacyService.apply(dto);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("Candidature enregistrée avec succès", created));
+    }
+
+    @PostMapping(value = "/apply", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Déposer une candidature avec pièces justificatives en une seule requête multipart")
+    public ResponseEntity<ApiResponse<CandidacyDto>> applyMultipart(
+            @RequestParam("electionId") Long electionId,
+            @RequestParam("professionFoi") String professionFoi,
+            @RequestParam(value = "biographie", required = false) String biographie,
+            @RequestParam(value = "cvFile", required = false) MultipartFile cvFile,
+            @RequestParam(value = "photoFile", required = false) MultipartFile photoFile) {
+        CandidacyDto created = candidacyService.applyWithDocuments(electionId, professionFoi, biographie, cvFile, photoFile);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Candidature et documents enregistrés avec succès", created));
     }
 
     @PostMapping(value = "/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -69,7 +100,17 @@ public class CandidacyController {
     @Operation(summary = "Télécharger ou visualiser un document justificatif sécurisé")
     public ResponseEntity<Resource> downloadFile(@PathVariable String filename) {
         Resource file = fileStorageService.loadFileAsResource(filename);
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            mediaType = MediaType.IMAGE_JPEG;
+        } else if (lower.endsWith(".png")) {
+            mediaType = MediaType.IMAGE_PNG;
+        } else if (lower.endsWith(".pdf")) {
+            mediaType = MediaType.APPLICATION_PDF;
+        }
         return ResponseEntity.ok()
+                .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getFilename() + "\"")
                 .body(file);
     }
