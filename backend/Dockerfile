@@ -1,23 +1,32 @@
-# Image d'exécution légère et sécurisée
-FROM eclipse-temurin:21-jre-alpine
+
+# Étape 1 : compiler le backend avec Maven et Java 21
+FROM maven:3.9-eclipse-temurin-21 AS build
+
 WORKDIR /app
 
-# Création d'un utilisateur non-root pour la sécurité
-RUN addgroup -S uasz && adduser -S voteuasz -G uasz
+COPY pom.xml .
+COPY .mvn .mvn
+COPY mvnw .
+COPY src src
 
-# Répertoire pour les téléversements
-RUN mkdir -p /app/uploads && chown -R voteuasz:uasz /app
+RUN chmod +x mvnw && ./mvnw -B clean package -DskipTests
+
+# Étape 2 : image légère pour exécuter l'application
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+RUN addgroup -S uasz && adduser -S voteuasz -G uasz \
+    && mkdir -p /app/uploads \
+    && chown -R voteuasz:uasz /app
+
+COPY --from=build /app/target/*.jar app.jar
 
 USER voteuasz
-
-COPY target/*.jar app.jar
 
 ENV SPRING_PROFILES_ACTIVE=prod
 ENV SERVER_PORT=8080
 
 EXPOSE 8080
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1
 
 ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
