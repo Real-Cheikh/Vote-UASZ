@@ -30,7 +30,7 @@ public class SecurityConfig {
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
-            @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080,https://*.vercel.app,https://vote-uasz-git-main-real-cheikh.vercel.app}") String[] allowedOrigins) {
+            @Value("${app.cors.allowed-origins:http://localhost:4200,http://localhost:8080,https://*.vercel.app,https://vote-uasz-ojy5.vercel.app,https://vote-uasz-git-main-real-cheikh.vercel.app}") String[] allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.allowedOrigins = Arrays.stream(allowedOrigins)
                 .map(String::trim)
@@ -71,8 +71,8 @@ public class SecurityConfig {
                         .hasAnyRole("COMMISSION_ELECTORALE", "SUPER_ADMIN_ELECTORAL")
 
                         // Candidats (gestion de leur dossier et campagne)
-                        .requestMatchers("/candidacies/apply", "/candidacies/my", "/candidacies/my/**", "/campaigns/my/**")
-                        .hasAnyRole("CANDIDAT", "ELECTEUR", "SUPER_ADMIN_ELECTORAL")
+                        .requestMatchers("/candidacies/apply", "/candidacies/my", "/candidacies/my/**", "/campaigns/my/**", "/candidacies/open-elections")
+                        .hasAnyRole("CANDIDAT", "ELECTEUR", "COMMISSION_ELECTORALE", "SUPER_ADMIN_ELECTORAL")
 
                         // Tous les autres endpoints requièrent une authentification valide
                         .anyRequest().authenticated()

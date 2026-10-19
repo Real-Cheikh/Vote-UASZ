@@ -18,8 +18,8 @@ public enum ElectionStatus {
             case CANDIDATURES_OPEN -> next == CANDIDATURES_CLOSED;
             case CANDIDATURES_CLOSED -> next == VALIDATION;
             case VALIDATION -> next == READY_TO_VOTE || next == CANDIDATURES_OPEN;
-            case READY_TO_VOTE -> next == VOTING_OPEN;
-            case VOTING_OPEN -> next == VOTING_CLOSED;
+            case READY_TO_VOTE -> next == VOTING_OPEN || next == CANDIDATURES_OPEN;
+            case VOTING_OPEN -> next == VOTING_CLOSED || next == CANDIDATURES_OPEN;
             case VOTING_CLOSED -> next == COUNTING;
             case COUNTING -> next == RESULTS_PUBLISHED;
             case RESULTS_PUBLISHED -> next == ARCHIVED;

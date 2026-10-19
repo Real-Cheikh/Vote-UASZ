@@ -118,7 +118,17 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                   <label class="form-label">Description & Règles</label>
                   <textarea class="form-control" rows="2" [(ngModel)]="newElection.description" name="description"></textarea>
                 </div>
-                <div style="display: flex; gap: 0.75rem;">
+                <div class="form-group" style="background: #f1f5f9; padding: 0.85rem; border-radius: var(--radius-sm); border-left: 4px solid var(--primary); margin-top: 1rem;">
+                  <label class="form-label" style="font-weight: 700; margin-bottom: 0.25rem;">Phase Initiale du Scrutin *</label>
+                  <select class="form-control" [(ngModel)]="newElection.ouvrirCandidatures" name="ouvrirCandidatures">
+                    <option [ngValue]="true">🟢 Ouvrir immédiatement aux candidatures (CANDIDATURES_OPEN - Recommandé)</option>
+                    <option [ngValue]="false">📝 Enregistrer en simple brouillon (DRAFT - Candidatures fermées)</option>
+                  </select>
+                  <small style="color: #64748b; display: block; margin-top: 0.35rem; font-size: 0.8rem;">
+                    En sélectionnant « Ouvrir immédiatement », les candidats éligibles verront directement ce scrutin dans la liste déroulante de dépôt de candidature.
+                  </small>
+                </div>
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
                   <button type="submit" class="btn btn-primary">Enregistrer le Scrutin</button>
                   <button type="button" class="btn btn-outline" (click)="showCreateModal = false">Annuler</button>
                 </div>
@@ -149,7 +159,7 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                     <td>
                       <div class="status-actions">
                         @if (e.statut === 'DRAFT') {
-                          <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_OPEN')">Ouvrir Candidatures</button>
+                          <button class="btn btn-primary btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_OPEN')">🟢 Ouvrir Candidatures</button>
                           <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'READY_TO_VOTE')">Prêt à Voter</button>
                         } @else if (e.statut === 'CANDIDATURES_OPEN') {
                           <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_CLOSED')">Clôturer Dépôt</button>
@@ -157,10 +167,13 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                           <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'VALIDATION')">Passer en Validation</button>
                         } @else if (e.statut === 'VALIDATION') {
                           <button class="btn btn-primary btn-xs" (click)="changeStatus(e.id, 'READY_TO_VOTE')">Valider Listes Définitives</button>
+                          <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_OPEN')">Rouvrir Candidatures</button>
                         } @else if (e.statut === 'READY_TO_VOTE') {
                           <button class="btn btn-primary btn-xs" (click)="changeStatus(e.id, 'VOTING_OPEN')">🟢 Ouvrir le Scrutin</button>
+                          <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_OPEN')">Rouvrir Candidatures</button>
                         } @else if (e.statut === 'VOTING_OPEN') {
                           <button class="btn btn-danger btn-xs" (click)="changeStatus(e.id, 'VOTING_CLOSED')">🛑 Clôturer le Vote</button>
+                          <button class="btn btn-outline btn-xs" (click)="changeStatus(e.id, 'CANDIDATURES_OPEN')">Rouvrir Candidatures</button>
                         } @else if (e.statut === 'VOTING_CLOSED') {
                           <span class="text-muted" style="font-size: 0.8rem;">Prêt pour dépouillement</span>
                         } @else if (e.statut === 'RESULTS_PUBLISHED') {
@@ -464,7 +477,8 @@ export class AdminComponent implements OnInit {
     permettreVoteBlanc: true,
     dateOuverture: '',
     dateCloture: '',
-    description: ''
+    description: '',
+    ouvrirCandidatures: true
   };
 
   ngOnInit(): void {
@@ -545,8 +559,11 @@ export class AdminComponent implements OnInit {
   }
 
   changeStatus(id: number, statut: string): void {
-    const motif = prompt('Motif officiel du changement de statut du scrutin :', 'Instruction de la Commission Électorale');
-    if (!motif) return;
+    let motif = prompt('Motif officiel du changement de statut du scrutin :', 'Instruction de la Commission Électorale');
+    if (motif === null) return; // Annulation utilisateur
+    if (!motif.trim()) {
+      motif = 'Instruction de la Commission Électorale';
+    }
 
     this.apiService.updateElectionStatus(id, statut, motif).subscribe({
       next: () => {
@@ -589,7 +606,8 @@ export class AdminComponent implements OnInit {
           permettreVoteBlanc: true,
           dateOuverture: '',
           dateCloture: '',
-          description: ''
+          description: '',
+          ouvrirCandidatures: true
         };
         this.loadElections();
       },

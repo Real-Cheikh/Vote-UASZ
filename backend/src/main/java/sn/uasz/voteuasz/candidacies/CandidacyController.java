@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import sn.uasz.voteuasz.common.ApiResponse;
+import sn.uasz.voteuasz.elections.ElectionDto;
 
 import java.util.List;
 
@@ -57,6 +58,12 @@ public class CandidacyController {
     @Operation(summary = "Lister les dossiers de candidature déposés par l'utilisateur connecté")
     public ResponseEntity<ApiResponse<List<CandidacyDto>>> getMyCandidacies() {
         return ResponseEntity.ok(ApiResponse.ok("Mes candidatures", candidacyService.findMyCandidacies()));
+    }
+
+    @GetMapping("/open-elections")
+    @Operation(summary = "Lister les scrutins actuellement ouverts au dépôt de candidatures pour l'utilisateur")
+    public ResponseEntity<ApiResponse<List<ElectionDto>>> getOpenElections() {
+        return ResponseEntity.ok(ApiResponse.ok("Scrutins ouverts aux candidatures", candidacyService.findOpenElectionsForCurrentUser()));
     }
 
     @GetMapping("/my/election/{electionId}")

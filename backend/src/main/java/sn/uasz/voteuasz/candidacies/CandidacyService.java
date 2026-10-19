@@ -9,6 +9,7 @@ import sn.uasz.voteuasz.audit.AuditService;
 import sn.uasz.voteuasz.common.BusinessException;
 import sn.uasz.voteuasz.common.ResourceNotFoundException;
 import sn.uasz.voteuasz.elections.Election;
+import sn.uasz.voteuasz.elections.ElectionDto;
 import sn.uasz.voteuasz.elections.ElectionRepository;
 import sn.uasz.voteuasz.elections.ElectionStatus;
 import sn.uasz.voteuasz.roles.Role;
@@ -94,6 +95,33 @@ public class CandidacyService {
         User currentUser = getCurrentAuthenticatedUser();
         return candidacyRepository.findByCandidatId(currentUser.getId()).stream()
                 .map(CandidacyDto::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ElectionDto> findOpenElectionsForCurrentUser() {
+        List<Election> openElections = electionRepository.findByStatutInWithDetails(List.of(ElectionStatus.CANDIDATURES_OPEN));
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof UserPrincipal principal)) {
+            return openElections.stream().map(ElectionDto::fromEntity).collect(Collectors.toList());
+        }
+
+        User currentUser = userRepository.findById(principal.getId()).orElse(null);
+        if (currentUser == null) {
+            return openElections.stream().map(ElectionDto::fromEntity).collect(Collectors.toList());
+        }
+
+        boolean isPrivileged = currentUser.getRoles().stream()
+                .anyMatch(r -> r.getName() == RoleName.ROLE_SUPER_ADMIN_ELECTORAL || r.getName() == RoleName.ROLE_COMMISSION_ELECTORALE);
+
+        if (isPrivileged) {
+            return openElections.stream().map(ElectionDto::fromEntity).collect(Collectors.toList());
+        }
+
+        return openElections.stream()
+                .filter(e -> e.getCollege() == null || e.getCollege().getCategorie() == null || e.getCollege().getCategorie() == currentUser.getCategorie())
+                .map(ElectionDto::fromEntity)
                 .collect(Collectors.toList());
     }
 

@@ -27,6 +27,7 @@ public class ElectionCreateDto {
 
     private boolean permettreVoteBlanc = true;
     private String descriptionRegles;
+    private boolean ouvrirCandidatures = false;
 
     // Règles optionnelles
     private String ufrCible;
@@ -35,6 +36,14 @@ public class ElectionCreateDto {
     private String categorieRequise;
 
     public ElectionCreateDto() {
+    }
+
+    public boolean isOuvrirCandidatures() {
+        return ouvrirCandidatures;
+    }
+
+    public void setOuvrirCandidatures(boolean ouvrirCandidatures) {
+        this.ouvrirCandidatures = ouvrirCandidatures;
     }
 
     public String getTitre() {

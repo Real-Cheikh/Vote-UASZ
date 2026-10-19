@@ -2,7 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute } from '@angular/router';
-import { timeout, finalize } from 'rxjs';
+import { timeout, finalize, catchError, of } from 'rxjs';
 import { ApiService } from '../core/services/api.service';
 import { AuthService } from '../core/services/auth.service';
 import { Candidacy, Election } from '../core/models/models';
@@ -197,10 +197,31 @@ import { environment } from '../../environments/environment';
             }
 
             <form (ngSubmit)="submitCandidacy()">
+              <!-- Indicateur d'erreur de chargement des scrutins -->
+              @if (openElectionsError) {
+                <div class="alert alert-danger" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <span>⚠️ {{ openElectionsError }}</span>
+                  <button type="button" class="btn btn-outline btn-xs" (click)="loadOpenElectionsData(true)">🔄 Réessayer</button>
+                </div>
+              }
+
+              <!-- Indicateur de chargement des scrutins ouverts -->
+              @if (loadingOpenElections) {
+                <div style="padding: 1.25rem; text-align: center; background: #f8fafc; border-radius: var(--radius-sm); border: 1px dashed #cbd5e1; margin-bottom: 1.25rem;">
+                  <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto 0.5rem auto; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">Recherche des scrutins en phase ouverte de candidatures...</span>
+                </div>
+              }
+
               <!-- Sélection du scrutin ouvert -->
               <div class="form-group">
-                <label class="form-label">Scrutin Visé (Phase Ouverte aux Candidatures) *</label>
-                <select class="form-control" [(ngModel)]="newCandidacy.electionId" name="electionId" (ngModelChange)="onElectionSelectChange($event)" required>
+                <div class="flex-between" style="margin-bottom: 0.35rem;">
+                  <label class="form-label" style="margin-bottom: 0;">Sélectionner un scrutin électoral ouvert *</label>
+                  <button type="button" class="btn btn-outline btn-xs" (click)="loadOpenElectionsData(true)" [disabled]="loadingOpenElections" title="Actualiser les scrutins disponibles">
+                    🔄 Actualiser
+                  </button>
+                </div>
+                <select class="form-control" [(ngModel)]="newCandidacy.electionId" name="electionId" (ngModelChange)="onElectionSelectChange($event)" required [disabled]="loadingOpenElections">
                   <option [ngValue]="null" disabled selected>-- Sélectionnez un scrutin électoral ouvert --</option>
                   @for (e of candidaciesOpenElections; track e.id) {
                     <option [ngValue]="e.id">
@@ -209,10 +230,18 @@ import { environment } from '../../environments/environment';
                   }
                 </select>
 
-                @if (candidaciesOpenElections.length === 0) {
-                  <small style="color: #64748b; display: block; margin-top: 0.35rem;">
-                    Aucun scrutin n'est actuellement en phase ouverte de dépôt de candidatures.
-                  </small>
+                @if (!loadingOpenElections && candidaciesOpenElections.length === 0) {
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); padding: 1rem; margin-top: 0.5rem; text-align: center;">
+                    <p style="color: #64748b; font-size: 0.9rem; margin: 0 0 0.5rem 0;">
+                      ⚠️ Aucun scrutin n'est actuellement en phase ouverte de dépôt de candidatures pour votre profil (Catégorie : <strong>{{ authService.currentUser()?.categorie || 'Non définie' }}</strong>).
+                    </p>
+                    <small style="color: #94a3b8; display: block; margin-bottom: 0.75rem;">
+                      Si un administrateur vient de créer un scrutin, vérifiez que le statut de l'élection a bien été basculé sur « CANDIDATURES_OPEN ».
+                    </small>
+                    <button type="button" class="btn btn-outline btn-sm" (click)="loadOpenElectionsData(true)">
+                      🔄 Actualiser la liste des scrutins
+                    </button>
+                  </div>
                 }
               </div>
 
@@ -601,6 +630,8 @@ export class CandidaciesComponent implements OnInit {
   activeTab: 'LIST' | 'APPLY' | 'MY_DOSSIER' = 'LIST';
   elections: Election[] = [];
   candidaciesOpenElections: Election[] = [];
+  loadingOpenElections = false;
+  openElectionsError = '';
   selectedElectionId: number | null = null;
   selectedOpenElection: Election | null = null;
   candidates: Candidacy[] = [];
@@ -645,6 +676,7 @@ export class CandidaciesComponent implements OnInit {
 
     // 2. Charger les données d'élections et candidatures
     this.loadElectionsData();
+    this.loadOpenElectionsData(false);
     if (this.authService.isAuthenticated()) {
       this.loadMyCandidacies();
     }
@@ -658,9 +690,8 @@ export class CandidaciesComponent implements OnInit {
     if (tab === 'LIST') {
       this.loadCandidates();
     } else if (tab === 'APPLY') {
-      if (this.elections.length === 0) {
-        this.loadElectionsData();
-      }
+      // Recharger systématiquement les scrutins ouverts avec forceReload
+      this.loadOpenElectionsData(true);
       if (this.authService.isAuthenticated()) {
         this.loadMyCandidacies();
       }
@@ -669,20 +700,61 @@ export class CandidaciesComponent implements OnInit {
     }
   }
 
+  loadOpenElectionsData(forceReload: boolean = true): void {
+    this.loadingOpenElections = true;
+    this.openElectionsError = '';
+    if (forceReload) {
+      this.apiService.invalidateElectionsCache();
+    }
+
+    this.apiService.getOpenElectionsForCandidacy().pipe(
+      catchError(() => {
+        // Repli automatique sur getPublicElections si l'endpoint spécifique n'est pas encore actif
+        return this.apiService.getPublicElections(true);
+      }),
+      finalize(() => {
+        this.loadingOpenElections = false;
+      })
+    ).subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          const userCat = this.authService.currentUser()?.categorie;
+          const isPrivileged = this.authService.isSuperAdmin() || this.authService.isCommission();
+
+          // Retenir uniquement les élections en phase CANDIDATURES_OPEN
+          let list = res.data.filter(e => e.statut === 'CANDIDATURES_OPEN');
+
+          // Si l'utilisateur a une catégorie définie et n'est pas admin, filtrer les scrutins compatibles
+          if (!isPrivileged && userCat) {
+            list = list.filter(e => !e.college || !e.college.categorie || e.college.categorie === userCat);
+          }
+
+          this.candidaciesOpenElections = list;
+
+          // Conserver la sélection si elle est présente dans la liste, sinon prendre la première
+          if (this.newCandidacy.electionId && !this.candidaciesOpenElections.some(e => Number(e.id) === Number(this.newCandidacy.electionId))) {
+            this.newCandidacy.electionId = null;
+          }
+
+          if (this.candidaciesOpenElections.length > 0 && !this.newCandidacy.electionId) {
+            this.newCandidacy.electionId = this.candidaciesOpenElections[0].id;
+          }
+
+          this.updateSelectedOpenElection();
+          this.checkIfAlreadyApplied(this.newCandidacy.electionId);
+        }
+      },
+      error: (err) => {
+        this.openElectionsError = err?.error?.message || 'Impossible de charger la liste des scrutins ouverts aux candidatures.';
+      }
+    });
+  }
+
   loadElectionsData(): void {
     this.apiService.getPublicElections().subscribe({
       next: (res) => {
         if (res.success && res.data) {
           this.elections = res.data;
-          this.candidaciesOpenElections = res.data.filter(e => e.statut === 'CANDIDATURES_OPEN');
-
-          // Scrutin ouvert par défaut pour le formulaire de candidature
-          if (this.candidaciesOpenElections.length > 0 && !this.newCandidacy.electionId) {
-            this.newCandidacy.electionId = this.candidaciesOpenElections[0].id;
-          }
-          this.updateSelectedOpenElection();
-          this.checkIfAlreadyApplied(this.newCandidacy.electionId);
-
           // Chargement initial des candidats
           this.loadCandidates();
         }

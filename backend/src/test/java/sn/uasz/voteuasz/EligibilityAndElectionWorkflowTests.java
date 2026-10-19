@@ -154,5 +154,37 @@ public class EligibilityAndElectionWorkflowTests {
         electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.VALIDATION, "Examen"));
         ElectionDto ready = electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.READY_TO_VOTE, "Prêt"));
         assertEquals(ElectionStatus.READY_TO_VOTE, ready.getStatut());
+
+        // Réouverture autorisée : READY_TO_VOTE -> CANDIDATURES_OPEN
+        ElectionDto reopenedFromReady = electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.CANDIDATURES_OPEN, "Réouverture des candidatures"));
+        assertEquals(ElectionStatus.CANDIDATURES_OPEN, reopenedFromReady.getStatut());
+
+        // Avancement vers READY_TO_VOTE puis VOTING_OPEN
+        electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.CANDIDATURES_CLOSED, "Clôture"));
+        electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.VALIDATION, "Examen"));
+        electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.READY_TO_VOTE, "Prêt vote"));
+        ElectionDto votingOpen = electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.VOTING_OPEN, "Ouverture vote"));
+        assertEquals(ElectionStatus.VOTING_OPEN, votingOpen.getStatut());
+
+        // Réouverture exceptionnelle si aucun vote : VOTING_OPEN -> CANDIDATURES_OPEN
+        ElectionDto reopenedFromVote = electionService.updateStatus(testId, new ElectionStatusUpdateDto(ElectionStatus.CANDIDATURES_OPEN, "Correction et réouverture candidatures"));
+        assertEquals(ElectionStatus.CANDIDATURES_OPEN, reopenedFromVote.getStatut());
+    }
+
+    @Test
+    @DisplayName("Vérifier la création directe d'un scrutin avec candidatures immédiatement ouvertes")
+    void testCreateElectionWithImmediateCandidaturesOpen() {
+        ElectionCreateDto dto = new ElectionCreateDto();
+        dto.setTitre("Scrutin Candidatures Directes");
+        dto.setType(ElectionType.DELEGUE);
+        dto.setCollegeId(collegeEtudiant.getId());
+        dto.setDateOuverture(OffsetDateTime.now().plusDays(2));
+        dto.setDateCloture(OffsetDateTime.now().plusDays(5));
+        dto.setOuvrirCandidatures(true);
+
+        ElectionDto created = electionService.create(dto);
+        assertNotNull(created.getId());
+        assertEquals(ElectionStatus.CANDIDATURES_OPEN, created.getStatut(),
+                "Le scrutin doit être directement initialisé en statut CANDIDATURES_OPEN");
     }
 }

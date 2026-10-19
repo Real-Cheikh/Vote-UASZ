@@ -80,7 +80,7 @@ public class ElectionService {
         election.setCollege(college);
         election.setDateOuverture(dto.getDateOuverture());
         election.setDateCloture(dto.getDateCloture());
-        election.setStatut(ElectionStatus.DRAFT);
+        election.setStatut(dto.isOuvrirCandidatures() ? ElectionStatus.CANDIDATURES_OPEN : ElectionStatus.DRAFT);
         election.setPermettreVoteBlanc(dto.isPermettreVoteBlanc());
         election.setDescriptionRegles(dto.getDescriptionRegles());
         election.setDateCreation(OffsetDateTime.now());

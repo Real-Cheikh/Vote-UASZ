@@ -98,6 +98,10 @@ export class ApiService {
     return this.http.get<ApiResponse<Candidacy[]>>(`${this.baseUrl}/candidacies/my`);
   }
 
+  getOpenElectionsForCandidacy(): Observable<ApiResponse<Election[]>> {
+    return this.http.get<ApiResponse<Election[]>>(`${this.baseUrl}/candidacies/open-elections`);
+  }
+
   getMyCandidacyForElection(electionId: number): Observable<ApiResponse<Candidacy>> {
     return this.http.get<ApiResponse<Candidacy>>(`${this.baseUrl}/candidacies/my/election/${electionId}`);
   }
