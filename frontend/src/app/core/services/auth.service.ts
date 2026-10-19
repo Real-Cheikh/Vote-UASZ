@@ -40,6 +40,17 @@ export class AuthService {
     );
   }
 
+  register(data: {
+    email: string;
+    password: string;
+    nom: string;
+    prenom: string;
+    numeroIdentification: string;
+    telephone?: string;
+  }): Observable<ApiResponse<User>> {
+    return this.http.post<ApiResponse<User>>(`${this.apiUrl}/register`, data);
+  }
+
   logout(): void {
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);

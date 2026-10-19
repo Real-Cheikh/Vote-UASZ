@@ -91,4 +91,89 @@ public class AuthenticationAndSecurityTests {
         assertTrue(passwordEncoder.matches(rawPassword, encoded));
         assertFalse(passwordEncoder.matches("AutreChose", encoded));
     }
+
+    @Test
+    @DisplayName("Test Inscription : Inscription réussie avec adresse institutionnelle @zig.univ.sn")
+    void testRegisterWithInstitutionalEmailSuccess() {
+        sn.uasz.voteuasz.auth.RegisterRequest request = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "cheikh.diop@zig.univ.sn",
+                "PassSecure2026!",
+                "Diop",
+                "Cheikh",
+                "ETUD-ZIG-2026-999",
+                "+221770000000"
+        );
+
+        sn.uasz.voteuasz.users.UserDto dto = authService.register(request);
+        assertNotNull(dto);
+        assertEquals("cheikh.diop@zig.univ.sn", dto.getEmail());
+        assertEquals("ETUDIANT", dto.getCategorie().name());
+        assertTrue(dto.getRoles().contains("ROLE_ELECTEUR"));
+        assertFalse(dto.getRoles().contains("ROLE_SUPER_ADMIN_ELECTORAL"));
+        assertFalse(dto.getRoles().contains("ROLE_COMMISSION_ELECTORALE"));
+        assertTrue(dto.isActif());
+        assertFalse(dto.isBloque());
+    }
+
+    @Test
+    @DisplayName("Test Inscription : Rejet strict des adresses email non institutionnelles ou frauduleuses")
+    void testRegisterWithNonInstitutionalEmailRejected() {
+        // Domaine externe (ex: @gmail.com)
+        sn.uasz.voteuasz.auth.RegisterRequest gmailRequest = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "hacker@gmail.com",
+                "PassSecure2026!",
+                "Hacker",
+                "Test",
+                "ETUD-FAKE-001",
+                null
+        );
+        assertThrows(sn.uasz.voteuasz.common.BusinessException.class, () -> authService.register(gmailRequest));
+
+        // Domaine frauduleux avec suffixe d'usurpation (ex: @zig.univ.sn.fake.com)
+        sn.uasz.voteuasz.auth.RegisterRequest fakeSubdomainRequest = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "fraud@zig.univ.sn.fake.com",
+                "PassSecure2026!",
+                "Fraud",
+                "Test",
+                "ETUD-FAKE-002",
+                null
+        );
+        assertThrows(sn.uasz.voteuasz.common.BusinessException.class, () -> authService.register(fakeSubdomainRequest));
+    }
+
+    @Test
+    @DisplayName("Test Inscription : Rejet des doublons d'email ou de numéro d'identification")
+    void testRegisterDuplicateRejected() {
+        sn.uasz.voteuasz.auth.RegisterRequest req1 = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "fatou.sow@zig.univ.sn",
+                "PassSecure2026!",
+                "Sow",
+                "Fatou",
+                "ETUD-ZIG-2026-888",
+                null
+        );
+        authService.register(req1);
+
+        // Doublon sur l'email
+        sn.uasz.voteuasz.auth.RegisterRequest duplicateEmail = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "fatou.sow@zig.univ.sn",
+                "AutrePass2026!",
+                "AutreNom",
+                "AutrePrenom",
+                "ETUD-ZIG-2026-889",
+                null
+        );
+        assertThrows(sn.uasz.voteuasz.common.BusinessException.class, () -> authService.register(duplicateEmail));
+
+        // Doublon sur le numéro d'identification
+        sn.uasz.voteuasz.auth.RegisterRequest duplicateId = new sn.uasz.voteuasz.auth.RegisterRequest(
+                "autre.etudiant@zig.univ.sn",
+                "AutrePass2026!",
+                "AutreNom",
+                "AutrePrenom",
+                "ETUD-ZIG-2026-888",
+                null
+        );
+        assertThrows(sn.uasz.voteuasz.common.BusinessException.class, () -> authService.register(duplicateId));
+    }
 }

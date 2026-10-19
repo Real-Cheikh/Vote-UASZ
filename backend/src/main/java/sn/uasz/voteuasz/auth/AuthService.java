@@ -8,25 +8,35 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sn.uasz.voteuasz.common.BusinessException;
 import sn.uasz.voteuasz.common.ResourceNotFoundException;
+import sn.uasz.voteuasz.roles.Role;
+import sn.uasz.voteuasz.roles.RoleName;
+import sn.uasz.voteuasz.roles.RoleRepository;
 import sn.uasz.voteuasz.security.JwtTokenProvider;
 import sn.uasz.voteuasz.security.UserPrincipal;
 import sn.uasz.voteuasz.users.User;
+import sn.uasz.voteuasz.users.UserCategory;
 import sn.uasz.voteuasz.users.UserDto;
 import sn.uasz.voteuasz.users.UserRepository;
 
 import java.time.LocalDateTime;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class AuthService {
 
+    private static final Pattern INSTITUTIONAL_EMAIL_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9._%+-]+@zig\\.univ\\.sn$");
+
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtTokenProvider tokenProvider) {
+    public AuthService(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, JwtTokenProvider tokenProvider) {
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
     }
@@ -111,5 +121,51 @@ public class AuthService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
 
         return UserDto.fromEntity(user);
+    }
+
+    @Transactional
+    public UserDto register(RegisterRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new BusinessException("L'adresse email institutionnelle est obligatoire.");
+        }
+
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        // Validation stricte du domaine institutionnel @zig.univ.sn
+        if (!INSTITUTIONAL_EMAIL_PATTERN.matcher(normalizedEmail).matches()) {
+            throw new BusinessException("Seules les adresses institutionnelles officielles se terminant par @zig.univ.sn sont autorisées pour l'inscription étudiante.");
+        }
+
+        String normalizedNumId = request.getNumeroIdentification() != null ? request.getNumeroIdentification().trim() : "";
+        if (normalizedNumId.isEmpty()) {
+            throw new BusinessException("Le numéro d'étudiant ou d'identification est obligatoire.");
+        }
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new BusinessException("Un compte existe déjà avec cette adresse email institutionnelle : " + normalizedEmail);
+        }
+
+        if (userRepository.existsByNumeroIdentification(normalizedNumId)) {
+            throw new BusinessException("Un compte est déjà enregistré avec ce numéro d'identification : " + normalizedNumId);
+        }
+
+        User user = new User();
+        user.setEmail(normalizedEmail);
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setNom(request.getNom().trim());
+        user.setPrenom(request.getPrenom().trim());
+        user.setNumeroIdentification(normalizedNumId);
+        user.setTelephone(request.getTelephone() != null && !request.getTelephone().isBlank() ? request.getTelephone().trim() : null);
+        user.setCategorie(UserCategory.ETUDIANT);
+        user.setActif(true);
+        user.setBloque(false);
+
+        // Attribution stricte et exclusive du rôle Électeur (JAMAIS un rôle administrateur)
+        Role roleElecteur = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
+                .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_ELECTEUR, "Électeur universitaire")));
+        user.setRoles(Set.of(roleElecteur));
+
+        User saved = userRepository.save(user);
+        return UserDto.fromEntity(saved);
     }
 }

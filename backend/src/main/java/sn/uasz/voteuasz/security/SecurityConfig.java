@@ -46,7 +46,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Endpoints publics (authentification, consultation basique, vérification)
-                        .requestMatchers("/auth/login", "/auth/refresh").permitAll()
+                        .requestMatchers("/auth/login", "/auth/refresh", "/auth/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/elections/public", "/elections/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/candidacies/public", "/candidacies/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/candidacies/documents/file/**").permitAll()

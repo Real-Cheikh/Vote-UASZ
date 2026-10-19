@@ -13,11 +13,29 @@ import { Election, ElectionResult } from '../core/models/models';
   imports: [CommonModule, FormsModule, RouterModule],
   template: `
     <div class="container results-container">
-      <div class="results-header">
+      <div class="results-header flex-between">
         <div>
           <div class="badge badge-secondary">Résultats Officiels Certifiés</div>
           <h2>Dépouillement & Suffrages Exprimés</h2>
           <p class="subtitle">Publication en temps réel supervisée par la Commission Électorale UASZ.</p>
+        </div>
+
+        <!-- Indicateur de synchronisation temps réel -->
+        <div class="sync-status-box">
+          @if (wsConnected) {
+            <span class="status-pill connected">
+              <span class="dot-indicator green-pulse"></span>
+              En Direct (WebSocket Actif)
+            </span>
+          } @else {
+            <span class="status-pill fallback">
+              <span class="dot-indicator yellow"></span>
+              Synchronisation Auto (10s)
+            </span>
+          }
+          <div class="last-sync-label">
+            Dernière mise à jour : <strong>{{ lastUpdated | date:'HH:mm:ss' }}</strong>
+          </div>
         </div>
       </div>
 
@@ -62,7 +80,7 @@ import { Election, ElectionResult } from '../core/models/models';
           </div>
           <div class="card stat-card">
             <span class="stat-value">{{ results.votantsTotal }}</span>
-            <span class="stat-label">Votants (Emargements)</span>
+            <span class="stat-label">Votants (Émargements)</span>
           </div>
           <div class="card stat-card">
             <span class="stat-value">{{ results.bulletinsValides }}</span>
@@ -122,10 +140,59 @@ import { Election, ElectionResult } from '../core/models/models';
     }
     .results-header {
       margin-bottom: 2rem;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
     .subtitle {
       color: var(--text-muted);
       font-size: 0.95rem;
+    }
+    .sync-status-box {
+      text-align: right;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .status-pill.connected {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .status-pill.fallback {
+      background: #fef9c3;
+      color: #a16207;
+      border: 1px solid #fef08a;
+    }
+    .dot-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .green-pulse {
+      background: #22c55e;
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulse 1.6s infinite;
+    }
+    .yellow {
+      background: #eab308;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+    .last-sync-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
     }
     .selector-card {
       margin-bottom: 2rem;
@@ -231,12 +298,29 @@ export class ResultsComponent implements OnInit, OnDestroy {
   loading = true;
   errorMessage = '';
 
+  wsConnected = false;
+  lastUpdated: Date = new Date();
+
   private wsSubscription: Subscription | null = null;
+  private statusSubscription: Subscription | null = null;
+  private pollingTimer: any = null;
 
   ngOnInit(): void {
-    // Connexion au WebSocket STOMP pour actualisation temps réel
+    // 1. Initialiser le WebSocket STOMP/SockJS
     this.wsService.connect();
 
+    this.statusSubscription = this.wsService.getConnectionStatus().subscribe((status) => {
+      this.wsConnected = status;
+    });
+
+    // 2. Définir le fallback polling régulier toutes les 10 secondes si WebSocket indisponible
+    this.pollingTimer = setInterval(() => {
+      if (!this.wsConnected && this.selectedElectionId) {
+        this.refreshResultsQuietly();
+      }
+    }, 10000);
+
+    // 3. Charger la liste des scrutins publiés
     this.apiService.getPublicElections().subscribe({
       next: (res) => {
         if (res.success && res.data) {
@@ -264,8 +348,17 @@ export class ResultsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+    }
     if (this.wsSubscription) {
       this.wsSubscription.unsubscribe();
+    }
+    if (this.statusSubscription) {
+      this.statusSubscription.unsubscribe();
+    }
+    if (this.selectedElectionId) {
+      this.wsService.unsubscribeFromElection(this.selectedElectionId);
     }
   }
 
@@ -285,12 +378,27 @@ export class ResultsComponent implements OnInit, OnDestroy {
       next: (res) => {
         this.loading = false;
         this.results = res.data;
+        this.lastUpdated = new Date();
         this.subscribeWebSocket();
       },
       error: (err) => {
         this.loading = false;
         this.errorMessage = err.error?.message || 'Résultats non encore publiés pour ce scrutin.';
       }
+    });
+  }
+
+  refreshResultsQuietly(): void {
+    if (!this.selectedElectionId) return;
+
+    this.apiService.getPublicResults(this.selectedElectionId).subscribe({
+      next: (res) => {
+        if (res.data) {
+          this.results = res.data;
+          this.lastUpdated = new Date();
+        }
+      },
+      error: () => {}
     });
   }
 
@@ -301,6 +409,7 @@ export class ResultsComponent implements OnInit, OnDestroy {
     this.wsSubscription = this.wsService.subscribeToElection(this.selectedElectionId).subscribe({
       next: (updatedResult) => {
         this.results = updatedResult;
+        this.lastUpdated = new Date();
       }
     });
   }

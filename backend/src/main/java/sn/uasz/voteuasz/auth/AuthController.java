@@ -3,6 +3,7 @@ package sn.uasz.voteuasz.auth;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import sn.uasz.voteuasz.common.ApiResponse;
@@ -17,6 +18,14 @@ public class AuthController {
 
     public AuthController(AuthService authService) {
         this.authService = authService;
+    }
+
+    @PostMapping("/register")
+    @Operation(summary = "Inscription d'un électeur avec adresse institutionnelle @zig.univ.sn")
+    public ResponseEntity<ApiResponse<UserDto>> register(@Valid @RequestBody RegisterRequest request) {
+        UserDto created = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Compte électeur créé avec succès. Vous pouvez maintenant vous connecter.", created));
     }
 
     @PostMapping("/login")

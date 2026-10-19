@@ -178,7 +178,19 @@ public class VotingService {
      */
     @Transactional(readOnly = true)
     public ReceiptVerificationDto verifyReceipt(String receiptHash) {
-        return ballotRepository.findByRecuVoteHash(receiptHash)
+        if (receiptHash == null || !receiptHash.trim().matches("^[a-fA-F0-9]{64}$")) {
+            return new ReceiptVerificationDto(
+                    false,
+                    receiptHash,
+                    null,
+                    null,
+                    null,
+                    "Format d'empreinte invalide. Une empreinte SHA-256 valide doit comporter exactement 64 caractères hexadécimaux."
+            );
+        }
+
+        String cleanHash = receiptHash.trim().toLowerCase();
+        return ballotRepository.findByRecuVoteHash(cleanHash)
                 .map(b -> new ReceiptVerificationDto(
                         true,
                         b.getRecuVoteHash(),
@@ -189,7 +201,7 @@ public class VotingService {
                 ))
                 .orElseGet(() -> new ReceiptVerificationDto(
                         false,
-                        receiptHash,
+                        cleanHash,
                         null,
                         null,
                         null,

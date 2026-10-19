@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { ApiService } from '../core/services/api.service';
 import { Candidacy, Election, VoteReceipt } from '../core/models/models';
 
@@ -13,7 +14,8 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
     <div class="container voting-container">
       @if (loading) {
         <div class="card text-center" style="padding: 4rem;">
-          <p>Initialisation sécurisée de l'isoloir électronique...</p>
+          <div class="spinner"></div>
+          <p style="margin-top: 1rem;">Initialisation sécurisée de l'isoloir électronique UASZ...</p>
         </div>
       } @else if (electionError) {
         <div class="card text-center" style="padding: 3rem;">
@@ -105,7 +107,7 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
               </div>
             </div>
             <div class="security-banner">
-              <strong>Garantie constitutionnelle :</strong> Votre jeton d'autorisation ne contient aucun identifiant personnel. Votre bulletin est strictly anonyme dès qu'il est glissé dans l'urne.
+              <strong>Garantie constitutionnelle :</strong> Votre jeton d'autorisation ne contient aucun identifiant personnel. Votre bulletin est strictement anonyme dès qu'il est glissé dans l'urne.
             </div>
           </div>
 
@@ -166,17 +168,48 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
               <strong>{{ currentSelectionLabel }}</strong>
             </div>
             <button
-              (click)="castBallot()"
+              (click)="openConfirmModal()"
               class="btn btn-primary btn-lg"
               [disabled]="(!selectedCandidacyId && !voteBlancSelected) || submitting"
             >
-              @if (submitting) {
-                <span>Scellement dans l'urne...</span>
-              } @else {
-                <span>🔒 Confirmer et Déposer mon Bulletin</span>
-              }
+              🔒 Vérifier & Déposer mon Bulletin
             </button>
           </div>
+
+          <!-- MODAL DE CONFIRMATION EXPLICITE DU VOTE -->
+          @if (showConfirmModal) {
+            <div class="modal-overlay">
+              <div class="confirm-modal">
+                <div class="modal-header-icon">🗳️</div>
+                <h3>Confirmation Définitive de Vote</h3>
+                <p class="modal-subtitle">Vous vous apprêtez à déposer votre bulletin dans l'urne électronique scellée.</p>
+
+                <div class="confirm-choice-box">
+                  <span class="choice-tag">Votre Choix Exprimé :</span>
+                  <div class="choice-title">{{ currentSelectionLabel }}</div>
+                  <span class="election-tag">{{ election?.titre }}</span>
+                </div>
+
+                <div class="alert alert-warning" style="margin: 1.25rem 0; font-size: 0.85rem; text-align: left;">
+                  <strong>Attention — Action Irréversible :</strong>
+                  Une fois déposé, votre bulletin est scellé avec un hachage cryptographique SHA-256. Vous ne pourrez ni modifier votre choix ni voter à nouveau pour ce scrutin.
+                </div>
+
+                <div class="modal-actions">
+                  <button type="button" class="btn btn-outline" (click)="closeConfirmModal()" [disabled]="submitting">
+                    ← Modifier mon choix
+                  </button>
+                  <button type="button" class="btn btn-primary" (click)="castBallot()" [disabled]="submitting">
+                    @if (submitting) {
+                      <span>Scellement dans l'urne...</span>
+                    } @else {
+                      <span>✓ Confirmer & Déposer</span>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
         </div>
       } @else if (step === 3 && receipt) {
         <!-- ÉTAPE 3 : CONFIRMATION OFFICIELLE & REÇU CRYPTOGRAPHIQUE -->
@@ -243,6 +276,18 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
     .subtitle {
       color: var(--text-muted);
       font-size: 1.05rem;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto;
+      border: 4px solid var(--border-color);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
     .otp-request-box, .otp-entry-box {
       text-align: center;
@@ -353,6 +398,73 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
       align-items: center;
       background: #ffffff;
     }
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1rem;
+    }
+    .confirm-modal {
+      background: #ffffff;
+      border-radius: var(--radius-lg);
+      max-width: 520px;
+      width: 100%;
+      padding: 2.25rem;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .modal-header-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .modal-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+    .confirm-choice-box {
+      background: var(--primary-light);
+      border: 1px solid #86efac;
+      border-radius: var(--radius-md);
+      padding: 1rem;
+      margin: 1.25rem 0;
+    }
+    .choice-tag {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--primary);
+      display: block;
+    }
+    .choice-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--dark);
+      margin: 0.25rem 0;
+    }
+    .election-tag {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
     .receipt-card {
       text-align: center;
       padding: 3rem;
@@ -427,6 +539,7 @@ export class VotingComponent implements OnInit, OnDestroy {
 
   selectedCandidacyId: number | null = null;
   voteBlancSelected = false;
+  showConfirmModal = false;
   receipt: VoteReceipt | null = null;
 
   countdownSeconds = 300;
@@ -450,31 +563,28 @@ export class VotingComponent implements OnInit, OnDestroy {
   }
 
   loadElectionDetails(): void {
-    this.apiService.getPublicElectionById(this.electionId).subscribe({
-      next: (res) => {
-        this.election = res.data;
-        if (this.election.statut !== 'VOTING_OPEN') {
-          this.electionError = "Ce scrutin n'est pas ouvert au vote actuellement.";
-          this.loading = false;
-          return;
-        }
-        this.loadCandidates();
-      },
-      error: () => {
-        this.electionError = 'Scrutin introuvable ou inaccessible.';
-        this.loading = false;
-      }
-    });
-  }
+    this.loading = true;
+    this.electionError = '';
 
-  loadCandidates(): void {
-    this.apiService.getPublicCandidates(this.electionId).subscribe({
-      next: (res) => {
-        this.candidates = res.data || [];
+    // Parallélisation RxJS forkJoin pour diviser par deux le temps de chargement
+    forkJoin({
+      electionRes: this.apiService.getPublicElectionById(this.electionId),
+      candidatesRes: this.apiService.getPublicCandidates(this.electionId)
+    }).subscribe({
+      next: ({ electionRes, candidatesRes }) => {
         this.loading = false;
+        this.election = electionRes.data;
+        this.candidates = candidatesRes.data || [];
+
+        if (this.election.statut !== 'VOTING_OPEN') {
+          this.electionError = `Ce scrutin n'est pas ouvert au vote actuellement (statut officiel : ${this.election.statut}).`;
+        }
       },
-      error: () => {
+      error: (err) => {
         this.loading = false;
+        this.electionError = err.status === 404
+          ? 'Scrutin électoral introuvable.'
+          : 'Erreur lors du chargement des informations du scrutin ou des candidats.';
       }
     });
   }
@@ -535,6 +645,16 @@ export class VotingComponent implements OnInit, OnDestroy {
     return 'Aucun choix sélectionné';
   }
 
+  openConfirmModal(): void {
+    if (!this.selectedCandidacyId && !this.voteBlancSelected) return;
+    this.showConfirmModal = true;
+  }
+
+  closeConfirmModal(): void {
+    if (this.submitting) return;
+    this.showConfirmModal = false;
+  }
+
   castBallot(): void {
     if (!this.selectedCandidacyId && !this.voteBlancSelected) return;
 
@@ -551,12 +671,18 @@ export class VotingComponent implements OnInit, OnDestroy {
     this.apiService.castBallot(payload).subscribe({
       next: (res) => {
         this.submitting = false;
+        this.showConfirmModal = false;
         this.receipt = res.data;
         this.step = 3; // Confirmation
       },
       error: (err) => {
         this.submitting = false;
-        this.errorMessage = err.error?.message || "Échec de l'enregistrement du bulletin.";
+        this.showConfirmModal = false;
+        if (err.status === 409 || (err.error?.message && err.error.message.toLowerCase().includes('déjà'))) {
+          this.errorMessage = 'Action rejetée : Un vote a déjà été enregistré pour votre compte ou avec ce jeton pour cette élection (double vote formellement prohibé).';
+        } else {
+          this.errorMessage = err.error?.message || "Échec de l'enregistrement du bulletin dans l'urne.";
+        }
       }
     });
   }
