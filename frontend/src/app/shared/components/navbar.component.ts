@@ -31,6 +31,7 @@ import { AuthService } from '../../core/services/auth.service';
 
           @if (authService.isAuthenticated()) {
             <a routerLink="/dashboard" routerLinkActive="active" class="link-auth" (click)="mobileMenuOpen = false">Mon Espace</a>
+            <a routerLink="/complaints" routerLinkActive="active" (click)="mobileMenuOpen = false">Recours</a>
             @if (authService.isCommission()) {
               <a routerLink="/admin" routerLinkActive="active" class="link-admin" (click)="mobileMenuOpen = false">
                 <span class="admin-badge">Admin</span>

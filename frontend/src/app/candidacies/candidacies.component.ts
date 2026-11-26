@@ -50,7 +50,7 @@ import { environment } from '../../environments/environment';
               <select class="form-control" [(ngModel)]="selectedElectionId" (change)="onElectionChange()">
                 <option [ngValue]="null">-- Tous les scrutins confondus --</option>
                 @for (e of elections; track e.id) {
-                  <option [ngValue]="e.id">{{ e.titre }} ({{ e.college?.nom || e.type }})</option>
+                  <option [ngValue]="e.id">{{ e.titre }} ({{ e.college ? e.college.nom : e.type }})</option>
                 }
               </select>
             </div>
@@ -225,7 +225,7 @@ import { environment } from '../../environments/environment';
                   <option [ngValue]="null" disabled selected>-- Sélectionnez un scrutin électoral ouvert --</option>
                   @for (e of candidaciesOpenElections; track e.id) {
                     <option [ngValue]="e.id">
-                      {{ e.titre }} — Collège : {{ e.college?.nom }} ({{ e.college?.categorie }})
+                      {{ e.titre }} — Collège : {{ e.college ? e.college.nom : 'Général' }} ({{ e.college ? e.college.categorie : 'Toutes catégories' }})
                     </option>
                   }
                 </select>
@@ -253,8 +253,8 @@ import { environment } from '../../environments/environment';
                     <span class="badge badge-success">Candidatures Ouvertes</span>
                   </div>
                   <div class="grid grid-cols-2" style="font-size: 0.85rem; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div><strong>Collège électoral :</strong> {{ selectedOpenElection.college?.nom }}</div>
-                    <div><strong>Catégorie concernée :</strong> {{ selectedOpenElection.college?.categorie }}</div>
+                    <div><strong>Collège électoral :</strong> {{ selectedOpenElection.college ? selectedOpenElection.college.nom : 'Général' }}</div>
+                    <div><strong>Catégorie concernée :</strong> {{ selectedOpenElection.college ? selectedOpenElection.college.categorie : 'Toutes' }}</div>
                     <div><strong>Ouverture :</strong> {{ selectedOpenElection.dateOuverture | date:'dd/MM/yyyy HH:mm' }}</div>
                     <div><strong>Clôture :</strong> {{ selectedOpenElection.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
                   </div>
@@ -272,7 +272,7 @@ import { environment } from '../../environments/environment';
                       </span>
                     } @else {
                       <span style="color: #dc2626; font-weight: 600; font-size: 0.85rem;">
-                        ⚠️ Attention : Votre catégorie ({{ authService.currentUser()?.categorie }}) ne correspond pas au collège requis ({{ selectedOpenElection.college?.categorie }}).
+                        ⚠️ Attention : Votre catégorie ({{ authService.currentUser()?.categorie }}) ne correspond pas au collège requis ({{ selectedOpenElection.college ? selectedOpenElection.college.categorie : 'Général' }}).
                       </span>
                     }
                   </div>

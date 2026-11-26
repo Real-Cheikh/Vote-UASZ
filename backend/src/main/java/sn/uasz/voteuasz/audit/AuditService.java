@@ -30,7 +30,7 @@ public class AuditService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public AuditEvent logEvent(String eventType, String details, Long electionId, String resultat) {
+    public synchronized AuditEvent logEvent(String eventType, String details, Long electionId, String resultat) {
         try {
             String actor = getEffectiveActor();
             String uuid = UUID.randomUUID().toString();

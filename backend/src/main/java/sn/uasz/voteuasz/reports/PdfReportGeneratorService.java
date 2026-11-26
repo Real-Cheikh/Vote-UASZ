@@ -65,6 +65,13 @@ public class PdfReportGeneratorService {
         Election election = electionRepository.findById(electionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Scrutin introuvable : " + electionId));
 
+        // RÈGLE ÉLECTORALE FONDAMENTALE : Aucun PV officiel ne peut être certifié ou délivré
+        // tant que le dépouillement n'a pas été officiellement validé et publié par la Commission.
+        if (election.getStatut() != sn.uasz.voteuasz.elections.ElectionStatus.RESULTS_PUBLISHED 
+                && election.getStatut() != sn.uasz.voteuasz.elections.ElectionStatus.ARCHIVED) {
+            throw new BusinessException("Impossible de générer un Procès-Verbal officiel : les résultats du scrutin n'ont pas encore été validés et publiés par la Commission Électorale.");
+        }
+
         ElectionResultDto results = resultsService.getElectionResultsForCommission(electionId);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

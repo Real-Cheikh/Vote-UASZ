@@ -146,6 +146,11 @@ public class ResultsAndPdfReportTests {
         assertEquals(5, countResult.getBulletinsValides());
         assertEquals(1, countResult.getBulletinsBlancs());
 
+        // RÈGLE DE SÉCURITÉ ÉLECTORALE : Avant publication, la génération de PV officiel doit être strictement rejetée
+        assertThrows(BusinessException.class, () -> {
+            pdfService.generateElectionReportPdf(election.getId());
+        }, "Le PV officiel ne doit jamais pouvoir être généré tant que le scrutin n'est pas publié");
+
         // 2. Publication officielle
         ElectionResultDto published = resultsService.publishResults(election.getId());
         assertNotNull(published);

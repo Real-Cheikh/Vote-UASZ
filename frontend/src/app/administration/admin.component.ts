@@ -152,7 +152,7 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                   <tr>
                     <td><strong>{{ e.titre }}</strong></td>
                     <td><span class="badge badge-primary">{{ e.type }}</span></td>
-                    <td>{{ e.college?.nom }}</td>
+                    <td>{{ e.college ? e.college.nom : 'Général' }}</td>
                     <td>
                       <span class="badge" [ngClass]="getStatusBadge(e.statut)">{{ e.statut }}</span>
                     </td>
@@ -392,7 +392,7 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                       </span>
                     </td>
                     <td>{{ a.details }}</td>
-                    <td><code style="font-size: 0.72rem; color: #0284c7;">{{ a.empreinteChaine?.substring(0, 16) }}...</code></td>
+                    <td><code style="font-size: 0.72rem; color: #0284c7;">{{ a.empreinteChaine ? a.empreinteChaine.substring(0, 16) : '' }}...</code></td>
                   </tr>
                 }
               </tbody>

@@ -104,7 +104,7 @@ import { Election } from '../core/models/models';
               <p class="election-desc">{{ e.description || 'Scrutin universitaire officiel régi par la Commission électorale UASZ.' }}</p>
 
               <div class="election-meta">
-                <div><strong>Collège électoral :</strong> {{ e.college?.nom || 'Général' }} ({{ e.college?.ufr || 'Toutes UFR' }})</div>
+                <div><strong>Collège électoral :</strong> {{ e.college ? e.college.nom : 'Général' }} ({{ e.college ? e.college.ufr : 'Toutes UFR' }})</div>
                 <div><strong>Ouverture :</strong> {{ e.dateOuverture | date:'dd/MM/yyyy HH:mm' }}</div>
                 <div><strong>Clôture :</strong> {{ e.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
               </div>

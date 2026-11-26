@@ -67,7 +67,7 @@ import { Eligibility } from '../core/models/models';
               <p class="election-desc">{{ item.election.description || 'Scrutin universitaire officiel UASZ.' }}</p>
 
               <div class="election-meta">
-                <div><strong>Collège :</strong> {{ item.election.college?.nom }}</div>
+                <div><strong>Collège :</strong> {{ item.election.college ? item.election.college.nom : 'Général' }}</div>
                 <div><strong>Clôture :</strong> {{ item.election.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
               </div>
 
