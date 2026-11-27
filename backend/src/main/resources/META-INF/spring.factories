@@ -1,0 +1,2 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  sn.uasz.voteuasz.common.DatabaseUrlEnvironmentPostProcessor

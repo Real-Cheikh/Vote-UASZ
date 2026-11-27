@@ -59,7 +59,7 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // Actuator (santé du service)
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/**", "/actuator/health", "/actuator/info").permitAll()
 
                         // WebSocket STOMP
                         .requestMatchers("/ws/**").permitAll()
