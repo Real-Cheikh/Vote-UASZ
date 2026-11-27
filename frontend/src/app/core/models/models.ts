@@ -115,6 +115,8 @@ export interface OtpChallengeResponse {
   dateExpiration: string;
   validiteSecondes: number;
   destinationMasquee: string;
+  mode?: string;
+  simulationCode?: string;
 }
 
 export interface VoteAuthorizationResponse {

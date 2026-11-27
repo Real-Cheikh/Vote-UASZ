@@ -1,8 +1,8 @@
-import { Component, inject } from '@angular/core';
+import { Component, ChangeDetectorRef, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, timeout } from 'rxjs';
 import { AuthService } from '../core/services/auth.service';
 
 @Component({
@@ -23,7 +23,7 @@ import { AuthService } from '../core/services/auth.service';
           <button
             type="button"
             class="tab-btn"
-            [class.active]="activeTab === 'login'"
+            [class.active]="activeTab() === 'login'"
             (click)="switchTab('login')"
           >
             Se Connecter
@@ -31,36 +31,36 @@ import { AuthService } from '../core/services/auth.service';
           <button
             type="button"
             class="tab-btn"
-            [class.active]="activeTab === 'register'"
+            [class.active]="activeTab() === 'register'"
             (click)="switchTab('register')"
           >
             Inscription Étudiante (@zig.univ.sn)
           </button>
         </div>
 
-        @if (successMessage) {
+        @if (successMessage()) {
           <div class="alert alert-success">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
-            <span>{{ successMessage }}</span>
+            <span>{{ successMessage() }}</span>
           </div>
         }
 
-        @if (errorMessage) {
+        @if (errorMessage()) {
           <div class="alert alert-danger">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            <span>{{ errorMessage }}</span>
+            <span>{{ errorMessage() }}</span>
           </div>
         }
 
         <!-- FORMULAIRE DE CONNEXION -->
-        @if (activeTab === 'login') {
+        @if (activeTab() === 'login') {
           <form (ngSubmit)="onSubmitLogin()" class="login-form">
             <div class="form-group">
               <label class="form-label">Adresse Email Institutionnelle</label>
@@ -86,8 +86,8 @@ import { AuthService } from '../core/services/auth.service';
               />
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" [disabled]="loading">
-              @if (loading) {
+            <button type="submit" class="btn btn-primary btn-block" [disabled]="loading()">
+              @if (loading()) {
                 <span>Connexion en cours...</span>
               } @else {
                 <span>Se Connecter</span>
@@ -120,7 +120,7 @@ import { AuthService } from '../core/services/auth.service';
         }
 
         <!-- FORMULAIRE D'INSCRIPTION ÉTUDIANTE -->
-        @if (activeTab === 'register') {
+        @if (activeTab() === 'register') {
           <form (ngSubmit)="onSubmitRegister()" class="login-form">
             <div class="grid grid-cols-2" style="gap: 0.75rem;">
               <div class="form-group">
@@ -208,8 +208,8 @@ import { AuthService } from '../core/services/auth.service';
               </div>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" [disabled]="regLoading">
-              @if (regLoading) {
+            <button type="submit" class="btn btn-primary btn-block" [disabled]="regLoading()">
+              @if (regLoading()) {
                 <span>Création du compte...</span>
               } @else {
                 <span>S'inscrire comme Électeur</span>
@@ -327,15 +327,17 @@ import { AuthService } from '../core/services/auth.service';
 export class LoginComponent {
   private authService = inject(AuthService);
   private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
 
-  activeTab: 'login' | 'register' = 'login';
+  activeTab = signal<'login' | 'register'>('login');
+  loading = signal<boolean>(false);
+  regLoading = signal<boolean>(false);
+  errorMessage = signal<string>('');
+  successMessage = signal<string>('');
 
   // Login model
   email = '';
   password = '';
-  loading = false;
-  errorMessage = '';
-  successMessage = '';
 
   // Register model
   regNom = '';
@@ -345,39 +347,46 @@ export class LoginComponent {
   regTelephone = '';
   regPassword = '';
   regPasswordConfirm = '';
-  regLoading = false;
 
   switchTab(tab: 'login' | 'register'): void {
-    this.activeTab = tab;
-    this.errorMessage = '';
-    this.successMessage = '';
+    this.activeTab.set(tab);
+    this.errorMessage.set('');
+    this.successMessage.set('');
+    this.cdr.markForCheck();
   }
 
   fillDemo(email: string, pass: string): void {
     this.email = email;
     this.password = pass;
-    this.errorMessage = '';
-    this.successMessage = '';
-    this.activeTab = 'login';
+    this.errorMessage.set('');
+    this.successMessage.set('');
+    this.activeTab.set('login');
+    this.cdr.markForCheck();
   }
 
   onSubmitLogin(): void {
     if (!this.email || !this.password) {
-      this.errorMessage = 'Veuillez renseigner votre email et mot de passe.';
+      this.errorMessage.set('Veuillez renseigner votre email et mot de passe.');
+      this.cdr.markForCheck();
       return;
     }
 
-    this.loading = true;
-    this.errorMessage = '';
-    this.successMessage = '';
+    this.loading.set(true);
+    this.errorMessage.set('');
+    this.successMessage.set('');
+    this.cdr.markForCheck();
 
     this.authService.login(this.email.trim(), this.password)
-      .pipe(finalize(() => {
-        this.loading = false;
-      }))
+      .pipe(
+        timeout(15000),
+        finalize(() => {
+          this.loading.set(false);
+          this.cdr.markForCheck();
+        })
+      )
       .subscribe({
         next: (res) => {
-          this.loading = false;
+          this.loading.set(false);
           if (res.success && res.data) {
             const destination = this.authService.isCommission() ? '/admin' : '/dashboard';
             this.router.navigate([destination]).then((success) => {
@@ -389,57 +398,67 @@ export class LoginComponent {
               this.router.navigate(['/dashboard']);
             });
           } else {
-            this.errorMessage = res.message || 'Authentification échouée.';
+            this.errorMessage.set(res.message || 'Authentification échouée.');
           }
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          this.loading = false;
-          if (err.status === 401) {
-            this.errorMessage = err.error?.message || 'Identifiants invalides (email ou mot de passe incorrect).';
+          this.loading.set(false);
+          if (err.name === 'TimeoutError') {
+            this.errorMessage.set('Délai d\'attente dépassé (timeout 15s). Le serveur met trop de temps à répondre.');
+          } else if (err.status === 401) {
+            this.errorMessage.set(err.error?.message || 'Identifiants invalides (email ou mot de passe incorrect).');
           } else if (err.status === 403) {
-            this.errorMessage = err.error?.message || 'Accès refusé. Compte non autorisé ou suspendu.';
+            this.errorMessage.set(err.error?.message || 'Accès refusé. Compte non autorisé ou suspendu.');
           } else if (err.status === 405) {
-            this.errorMessage = 'Méthode non autorisée (405). La requête a ciblé une ressource statique au lieu du backend Render.';
+            this.errorMessage.set('Méthode non autorisée (405). Requête invalide.');
           } else if (err.status === 0) {
-            this.errorMessage = 'Impossible de joindre le serveur backend (Render). Vérifiez votre connexion ou patientez quelques secondes pendant le réveil du serveur.';
+            this.errorMessage.set('Impossible de joindre le serveur backend. Vérifiez votre connexion.');
           } else if (err.status >= 500) {
-            this.errorMessage = 'Erreur interne du serveur backend. Veuillez réessayer dans quelques instants.';
+            this.errorMessage.set('Erreur interne du serveur backend. Veuillez réessayer dans quelques instants.');
           } else {
-            this.errorMessage = (typeof err.error === 'object' && err.error?.message)
+            this.errorMessage.set((typeof err.error === 'object' && err.error?.message)
               ? err.error.message
-              : `Erreur de connexion (${err.status || 'réseau'}). Veuillez réessayer.`;
+              : `Erreur de connexion (${err.status || 'réseau'}). Veuillez réessayer.`);
           }
+          this.cdr.markForCheck();
         }
       });
   }
 
   onSubmitRegister(): void {
-    this.errorMessage = '';
-    this.successMessage = '';
+    this.errorMessage.set('');
+    this.successMessage.set('');
 
     if (!this.regPrenom || !this.regNom || !this.regEmail || !this.regNumeroId || !this.regPassword) {
-      this.errorMessage = 'Veuillez renseigner tous les champs obligatoires (*).';
+      this.errorMessage.set('Veuillez renseigner tous les champs obligatoires (*).');
+      this.cdr.markForCheck();
       return;
     }
 
     const trimmedEmail = this.regEmail.trim().toLowerCase();
     const institutionalRegex = /^[a-zA-Z0-9._%+-]+@zig\.univ\.sn$/;
     if (!institutionalRegex.test(trimmedEmail)) {
-      this.errorMessage = "Seules les adresses institutionnelles officielles se terminant par @zig.univ.sn sont autorisées pour l'inscription étudiante.";
+      this.errorMessage.set("Seules les adresses institutionnelles officielles se terminant par @zig.univ.sn sont autorisées pour l'inscription étudiante.");
+      this.cdr.markForCheck();
       return;
     }
 
     if (this.regPassword.length < 8) {
-      this.errorMessage = 'Le mot de passe doit comporter au moins 8 caractères.';
+      this.errorMessage.set('Le mot de passe doit comporter au moins 8 caractères.');
+      this.cdr.markForCheck();
       return;
     }
 
     if (this.regPassword !== this.regPasswordConfirm) {
-      this.errorMessage = 'Les deux mots de passe saisis ne sont pas identiques.';
+      this.errorMessage.set('Les deux mots de passe saisis ne sont pas identiques.');
+      this.cdr.markForCheck();
       return;
     }
 
-    this.regLoading = true;
+    this.regLoading.set(true);
+    this.cdr.markForCheck();
+
     this.authService.register({
       email: trimmedEmail,
       password: this.regPassword,
@@ -447,14 +466,19 @@ export class LoginComponent {
       prenom: this.regPrenom.trim(),
       numeroIdentification: this.regNumeroId.trim(),
       telephone: this.regTelephone ? this.regTelephone.trim() : undefined
-    }).pipe(finalize(() => {
-      this.regLoading = false;
-    })).subscribe({
+    }).pipe(
+      timeout(15000),
+      finalize(() => {
+        this.regLoading.set(false);
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
       next: (res) => {
-        this.successMessage = 'Compte électeur créé avec succès ! Vous pouvez maintenant vous connecter.';
+        this.regLoading.set(false);
+        this.successMessage.set('Compte électeur créé avec succès ! Connectez-vous avec vos identifiants.');
         this.email = trimmedEmail;
         this.password = '';
-        this.activeTab = 'login';
+        this.activeTab.set('login');
         // Réinitialiser les champs d'inscription
         this.regNom = '';
         this.regPrenom = '';
@@ -463,17 +487,22 @@ export class LoginComponent {
         this.regTelephone = '';
         this.regPassword = '';
         this.regPasswordConfirm = '';
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        if (err.status === 400 || err.status === 409) {
-          this.errorMessage = err.error?.message || 'Erreur lors de la création du compte (doublon ou données non conformes).';
+        this.regLoading.set(false);
+        if (err.name === 'TimeoutError') {
+          this.errorMessage.set('Le serveur met trop de temps à répondre (timeout 15s). Veuillez vérifier votre connexion.');
+        } else if (err.status === 400 || err.status === 409) {
+          this.errorMessage.set(err.error?.message || 'Erreur lors de la création du compte (doublon ou données non conformes).');
         } else if (err.status === 0) {
-          this.errorMessage = 'Impossible de contacter le serveur backend. Veuillez vérifier votre connexion.';
+          this.errorMessage.set('Impossible de contacter le serveur backend. Veuillez vérifier votre connexion.');
         } else {
-          this.errorMessage = (typeof err.error === 'object' && err.error?.message)
+          this.errorMessage.set((typeof err.error === 'object' && err.error?.message)
             ? err.error.message
-            : `Erreur lors de l'inscription (${err.status || 'réseau'}).`;
+            : `Erreur lors de l'inscription (${err.status || 'réseau'}).`);
         }
+        this.cdr.markForCheck();
       }
     });
   }

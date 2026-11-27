@@ -41,8 +41,30 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
             </div>
           </div>
 
-          @if (otpMessage) {
+          @if (otpMessage && !otpSimulationCode) {
             <div class="alert alert-success">{{ otpMessage }}</div>
+          }
+          @if (otpSimulationCode) {
+            <div class="alert alert-warning simulation-banner" style="text-align: left; margin: 1rem 0; border-left: 4px solid #f59e0b;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #92400e; margin-bottom: 0.35rem;">
+                <span>🧪 Mode Démonstration & Évaluation (Bac à Sable)</span>
+              </div>
+              <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #78350f;">
+                Le serveur backend n'étant pas raccordé à la messagerie SMTP institutionnelle (@zig.univ.sn), votre code OTP à usage unique est mis à disposition ci-dessous pour tester le processus électoral complet :
+              </p>
+              <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 0.75rem 1rem; border-radius: 6px; border: 1px dashed #d97706; margin-bottom: 0.5rem;">
+                <div>
+                  <span style="font-size: 0.75rem; text-transform: uppercase; color: #92400e; font-weight: 700; display: block;">Code OTP Généré (Valide 5 min) :</span>
+                  <code style="font-size: 1.75rem; font-weight: 900; letter-spacing: 0.25em; color: #1e293b;">{{ otpSimulationCode }}</code>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary" (click)="fillOtp(otpSimulationCode)">
+                  Insérer le code ↵
+                </button>
+              </div>
+              <small style="color: #92400e; font-size: 0.75rem; display: block;">
+                ℹ️ En production réelle avec passerelle SMTP institutionnelle activée, ce code est transmis sous pli électronique chiffré à {{ otpDestinationMasquee }}.
+              </small>
+            </div>
           }
           @if (errorMessage) {
             <div class="alert alert-danger">{{ errorMessage }}</div>
@@ -532,6 +554,8 @@ export class VotingComponent implements OnInit, OnDestroy {
   electionError = '';
   errorMessage = '';
   otpMessage = '';
+  otpSimulationCode = '';
+  otpDestinationMasquee = '';
 
   step = 1; // 1: OTP, 2: Isoloir, 3: Reçu
   otpSent = false;
@@ -595,11 +619,19 @@ export class VotingComponent implements OnInit, OnDestroy {
   requestOtp(): void {
     this.submitting = true;
     this.errorMessage = '';
+    this.otpSimulationCode = '';
     this.apiService.generateOtp(this.electionId).subscribe({
       next: (res) => {
         this.submitting = false;
         this.otpSent = true;
-        this.otpMessage = `Un code de sécurité a été envoyé à ${res.data.destinationMasquee}. Il expire dans 5 minutes.`;
+        this.otpDestinationMasquee = res.data.destinationMasquee || '';
+        if (res.data.mode === 'SIMULATION' && res.data.simulationCode) {
+          this.otpSimulationCode = res.data.simulationCode;
+          this.otpMessage = res.data.message;
+        } else {
+          this.otpSimulationCode = '';
+          this.otpMessage = `Un code de sécurité a été envoyé à ${res.data.destinationMasquee}. Il expire dans 5 minutes.`;
+        }
         this.startCountdown(res.data.validiteSecondes || 300);
         this.cdr.markForCheck();
       },
@@ -609,6 +641,11 @@ export class VotingComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }
     });
+  }
+
+  fillOtp(code: string): void {
+    this.otpCode = code;
+    this.cdr.markForCheck();
   }
 
   validateOtpAndGetToken(): void {

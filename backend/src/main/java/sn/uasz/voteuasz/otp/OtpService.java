@@ -47,6 +47,9 @@ public class OtpService {
     @Value("${app.otp.cooldown-seconds:60}")
     private int cooldownSeconds;
 
+    @Value("${app.otp.provider:mock}")
+    private String otpProvider;
+
     // Adaptateur de test en mémoire pour faciliter les tests automatisés sans exposer le code
     private final Map<String, String> testAdapterLastCode = new ConcurrentHashMap<>();
 
@@ -124,11 +127,20 @@ public class OtpService {
         auditService.logEvent("OTP_CHALLENGE_ISSUED", "Demande de code OTP pour vote", electionId, "SUCCESS");
 
         String maskedEmail = maskEmail(user.getEmail());
+        boolean isSimulation = "mock".equalsIgnoreCase(otpProvider) || "simulation".equalsIgnoreCase(otpProvider);
+        String message = isSimulation
+                ? "Mode Démonstration & Évaluation : Le serveur fonctionne en bac à sable sécurisé (aucun serveur SMTP externe n'est configuré pour le domaine @zig.univ.sn). Votre code d'autorisation unique est mis à disposition pour l'évaluation."
+                : "Un code d'autorisation à usage unique a été envoyé à votre adresse institutionnelle.";
+        String simulationCode = isSimulation ? clearOtpCode : null;
+        String mode = isSimulation ? "SIMULATION" : "EMAIL";
+
         return new OtpChallengeResponseDto(
-                "Un code d'autorisation à usage unique a été généré.",
+                message,
                 expiration,
                 expirationSeconds,
-                maskedEmail
+                maskedEmail,
+                mode,
+                simulationCode
         );
     }
 

@@ -94,15 +94,20 @@ public class OtpSecurityTests {
     }
 
     @Test
-    @DisplayName("Test 7 : Génération et validation d'un OTP légitime")
+    @DisplayName("Test 7 : Génération et validation d'un OTP légitime avec mode simulation transparent")
     void testValidOtpVerification() {
         OtpChallengeResponseDto challenge = otpService.generateOtp(testUser.getId(), testElection.getId());
         assertNotNull(challenge);
         assertEquals(300, challenge.getValiditeSecondes());
+        assertEquals("SIMULATION", challenge.getMode());
+        assertNotNull(challenge.getSimulationCode());
+        assertEquals(6, challenge.getSimulationCode().length());
+        assertTrue(challenge.getMessage().contains("Mode Démonstration & Évaluation"));
 
         String code = otpService.getTestAdapterCode(testUser.getEmail(), testElection.getId());
         assertNotNull(code);
         assertEquals(6, code.length());
+        assertEquals(code, challenge.getSimulationCode());
 
         boolean valid = otpService.verifyOtp(testUser.getId(), testElection.getId(), code);
         assertTrue(valid);
