@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute } from '@angular/router';
@@ -28,51 +28,59 @@ import { environment } from '../../environments/environment';
 
       <!-- Navigation Onglets -->
       <div class="tabs-bar">
-        <button class="tab-btn" [class.active]="activeTab === 'LIST'" (click)="setTab('LIST')">
+        <button class="tab-btn" [class.active]="activeTab() === 'LIST'" (click)="setTab('LIST')">
           📋 Liste des Candidats
         </button>
-        <button class="tab-btn" [class.active]="activeTab === 'APPLY'" (click)="setTab('APPLY')">
+        <button class="tab-btn" [class.active]="activeTab() === 'APPLY'" (click)="setTab('APPLY')">
           ✍️ Postuler à un Scrutin
         </button>
-        <button class="tab-btn" [class.active]="activeTab === 'MY_DOSSIER'" (click)="setTab('MY_DOSSIER')">
-          📁 Mes Candidatures @if (authService.isAuthenticated() && myCandidacies.length > 0) { ({{ myCandidacies.length }}) }
+        <button class="tab-btn" [class.active]="activeTab() === 'MY_DOSSIER'" (click)="setTab('MY_DOSSIER')">
+          📁 Mes Candidatures @if (authService.isAuthenticated() && myCandidacies().length > 0) { ({{ myCandidacies().length }}) }
         </button>
       </div>
 
       <!-- ========================================== -->
       <!-- ONGLET 1 : LISTE DES CANDIDATS (PUBLIQUE)   -->
       <!-- ========================================== -->
-      @if (activeTab === 'LIST') {
+      @if (activeTab() === 'LIST') {
         <div class="election-select-box card">
           <div class="flex-between" style="flex-wrap: wrap; gap: 1rem;">
             <div style="flex: 1; min-width: 250px;">
               <label class="form-label">Filtrer par scrutin :</label>
-              <select class="form-control" [(ngModel)]="selectedElectionId" (change)="onElectionChange()">
+              <select class="form-control" [ngModel]="selectedElectionId()" (ngModelChange)="onElectionFilterChange($event)">
                 <option [ngValue]="null">-- Tous les scrutins confondus --</option>
-                @for (e of elections; track e.id) {
+                @for (e of elections(); track e.id) {
                   <option [ngValue]="e.id">{{ e.titre }} ({{ e.college ? e.college.nom : e.type }})</option>
                 }
               </select>
             </div>
             <div>
-              <button class="btn btn-outline btn-sm" (click)="loadCandidates()" [disabled]="loadingCandidates" style="margin-top: 1.5rem;">
-                🔄 Actualiser la liste
+              <button class="btn btn-outline btn-sm" (click)="loadCandidates()" [disabled]="loadingCandidates()" style="margin-top: 1.5rem;">
+                <span [class.spin]="loadingCandidates()">🔄</span> Actualiser la liste
               </button>
             </div>
           </div>
         </div>
 
-        @if (loadingCandidates) {
-          <div class="card text-center" style="padding: 3rem;">
-            <p>Chargement des candidatures officielles depuis le serveur...</p>
+        @if (loadingCandidates()) {
+          <div class="card text-center loading-card" style="padding: 3.5rem;">
+            <div class="spinner"></div>
+            <p style="margin-top: 1.25rem; color: var(--text-muted); font-size: 1.05rem;">
+              Chargement des candidatures officielles depuis le serveur...
+            </p>
           </div>
-        } @else if (candidatesError) {
-          <div class="alert alert-danger flex-between">
-            <span>{{ candidatesError }}</span>
-            <button class="btn btn-secondary btn-sm" (click)="loadCandidates()">Réessayer</button>
+        } @else if (candidatesError()) {
+          <div class="card error-card" style="padding: 2rem; border-left: 5px solid #dc2626;">
+            <div class="flex-between" style="flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <p class="text-danger" style="margin: 0; font-weight: 600;">{{ candidatesError() }}</p>
+                <small class="text-muted">Vérifiez votre connexion au serveur électoral UASZ.</small>
+              </div>
+              <button class="btn btn-primary btn-sm" (click)="loadCandidates()">🔄 Réessayer</button>
+            </div>
           </div>
-        } @else if (candidates.length === 0) {
-          <div class="card text-center" style="padding: 3rem;">
+        } @else if (candidates().length === 0) {
+          <div class="card text-center" style="padding: 3.5rem;">
             <div style="font-size: 2.5rem; margin-bottom: 1rem;">📋</div>
             <h4>Aucun candidat enregistré pour ce scrutin à ce stade</h4>
             <p class="text-muted" style="max-width: 500px; margin: 0.5rem auto 1.5rem;">
@@ -86,11 +94,11 @@ import { environment } from '../../environments/environment';
           </div>
         } @else {
           <div class="candidates-count-bar">
-            <span><strong>{{ candidates.length }}</strong> candidature(s) enregistrée(s)</span>
+            <span><strong>{{ candidates().length }}</strong> candidature(s) enregistrée(s)</span>
           </div>
 
           <div class="grid grid-cols-2" style="gap: 1.5rem;">
-            @for (c of candidates; track c.id) {
+            @for (c of candidates(); track c.id) {
               <div class="card candidate-card">
                 <div>
                   <div class="candidate-header">
@@ -151,7 +159,7 @@ import { environment } from '../../environments/environment';
       <!-- ========================================== -->
       <!-- ONGLET 2 : POSTULER À UN SCRUTIN          -->
       <!-- ========================================== -->
-      @if (activeTab === 'APPLY') {
+      @if (activeTab() === 'APPLY') {
         @if (!authService.isAuthenticated()) {
           <div class="card text-center" style="padding: 3rem; max-width: 650px; margin: 0 auto;">
             <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
@@ -170,25 +178,25 @@ import { environment } from '../../environments/environment';
               Sélectionnez un scrutin actuellement ouvert et transmettez votre profession de foi ainsi que vos pièces justificatives.
             </p>
 
-            @if (applySuccess) {
+            @if (applySuccess()) {
               <div class="alert alert-success" style="margin-bottom: 1.5rem;">
-                {{ applySuccess }}
+                {{ applySuccess() }}
               </div>
             }
-            @if (applyError) {
+            @if (applyError()) {
               <div class="alert alert-danger" style="margin-bottom: 1.5rem;">
-                {{ applyError }}
+                {{ applyError() }}
               </div>
             }
 
-            @if (isAlreadyAppliedForSelected) {
+            @if (isAlreadyAppliedForSelected()) {
               <div class="alert alert-warning" style="margin-bottom: 1.5rem;">
                 <div style="font-weight: 700; margin-bottom: 0.35rem;">
                   ⚠️ Candidature déjà enregistrée pour ce scrutin
                 </div>
                 <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem;">
-                  Vous avez déjà transmis un dossier pour ce scrutin le {{ alreadyAppliedCandidacy?.dateSoumission | date:'dd/MM/yyyy à HH:mm' }}.
-                  Statut : <strong>{{ getStatusLabel(alreadyAppliedCandidacy?.statut) }}</strong>.
+                  Vous avez déjà transmis un dossier pour ce scrutin le {{ alreadyAppliedCandidacy()?.dateSoumission | date:'dd/MM/yyyy à HH:mm' }}.
+                  Statut : <strong>{{ getStatusLabel(alreadyAppliedCandidacy()?.statut) }}</strong>.
                 </p>
                 <button type="button" class="btn btn-outline btn-sm" (click)="setTab('MY_DOSSIER')">
                   Consulter mon dossier complet dans « Mes Candidatures » →
@@ -198,18 +206,18 @@ import { environment } from '../../environments/environment';
 
             <form (ngSubmit)="submitCandidacy()">
               <!-- Indicateur d'erreur de chargement des scrutins -->
-              @if (openElectionsError) {
+              @if (openElectionsError()) {
                 <div class="alert alert-danger" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                  <span>⚠️ {{ openElectionsError }}</span>
+                  <span>⚠️ {{ openElectionsError() }}</span>
                   <button type="button" class="btn btn-outline btn-xs" (click)="loadOpenElectionsData(true)">🔄 Réessayer</button>
                 </div>
               }
 
               <!-- Indicateur de chargement des scrutins ouverts -->
-              @if (loadingOpenElections) {
-                <div style="padding: 1.25rem; text-align: center; background: #f8fafc; border-radius: var(--radius-sm); border: 1px dashed #cbd5e1; margin-bottom: 1.25rem;">
-                  <div class="spinner" style="width: 24px; height: 24px; margin: 0 auto 0.5rem auto; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                  <span style="font-size: 0.85rem; color: var(--text-muted);">Recherche des scrutins en phase ouverte de candidatures...</span>
+              @if (loadingOpenElections()) {
+                <div style="padding: 1.5rem; text-align: center; background: #f8fafc; border-radius: var(--radius-sm); border: 1px dashed #cbd5e1; margin-bottom: 1.25rem;">
+                  <div class="spinner" style="width: 28px; height: 28px; margin: 0 auto 0.5rem auto;"></div>
+                  <span style="font-size: 0.9rem; color: var(--text-muted);">Recherche des scrutins en phase ouverte de candidatures...</span>
                 </div>
               }
 
@@ -217,22 +225,29 @@ import { environment } from '../../environments/environment';
               <div class="form-group">
                 <div class="flex-between" style="margin-bottom: 0.35rem;">
                   <label class="form-label" style="margin-bottom: 0;">Sélectionner un scrutin électoral ouvert *</label>
-                  <button type="button" class="btn btn-outline btn-xs" (click)="loadOpenElectionsData(true)" [disabled]="loadingOpenElections" title="Actualiser les scrutins disponibles">
-                    🔄 Actualiser
+                  <button type="button" class="btn btn-outline btn-xs" (click)="loadOpenElectionsData(true)" [disabled]="loadingOpenElections()" title="Actualiser les scrutins disponibles">
+                    <span [class.spin]="loadingOpenElections()">🔄</span> Actualiser
                   </button>
                 </div>
-                <select class="form-control" [(ngModel)]="newCandidacy.electionId" name="electionId" (ngModelChange)="onElectionSelectChange($event)" required [disabled]="loadingOpenElections">
+                <select
+                  class="form-control"
+                  [(ngModel)]="newCandidacy.electionId"
+                  name="electionId"
+                  (ngModelChange)="onElectionSelectChange($event)"
+                  required
+                  [disabled]="loadingOpenElections()"
+                >
                   <option [ngValue]="null" disabled selected>-- Sélectionnez un scrutin électoral ouvert --</option>
-                  @for (e of candidaciesOpenElections; track e.id) {
+                  @for (e of candidaciesOpenElections(); track e.id) {
                     <option [ngValue]="e.id">
                       {{ e.titre }} — Collège : {{ e.college ? e.college.nom : 'Général' }} ({{ e.college ? e.college.categorie : 'Toutes catégories' }})
                     </option>
                   }
                 </select>
 
-                @if (!loadingOpenElections && candidaciesOpenElections.length === 0) {
-                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); padding: 1rem; margin-top: 0.5rem; text-align: center;">
-                    <p style="color: #64748b; font-size: 0.9rem; margin: 0 0 0.5rem 0;">
+                @if (!loadingOpenElections() && candidaciesOpenElections().length === 0) {
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); padding: 1.25rem; margin-top: 0.75rem; text-align: center;">
+                    <p style="color: #64748b; font-size: 0.95rem; margin: 0 0 0.5rem 0;">
                       ⚠️ Aucun scrutin n'est actuellement en phase ouverte de dépôt de candidatures pour votre profil (Catégorie : <strong>{{ authService.currentUser()?.categorie || 'Non définie' }}</strong>).
                     </p>
                     <small style="color: #94a3b8; display: block; margin-bottom: 0.75rem;">
@@ -246,21 +261,21 @@ import { environment } from '../../environments/environment';
               </div>
 
               <!-- Fiche d'information détaillée du scrutin sélectionné -->
-              @if (selectedOpenElection) {
+              @if (selectedOpenElection(); as election) {
                 <div class="scrutin-details-box">
                   <div class="flex-between" style="margin-bottom: 0.5rem;">
                     <strong style="color: var(--primary);">📋 Détails du Scrutin Sélectionné</strong>
                     <span class="badge badge-success">Candidatures Ouvertes</span>
                   </div>
                   <div class="grid grid-cols-2" style="font-size: 0.85rem; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div><strong>Collège électoral :</strong> {{ selectedOpenElection.college ? selectedOpenElection.college.nom : 'Général' }}</div>
-                    <div><strong>Catégorie concernée :</strong> {{ selectedOpenElection.college ? selectedOpenElection.college.categorie : 'Toutes' }}</div>
-                    <div><strong>Ouverture :</strong> {{ selectedOpenElection.dateOuverture | date:'dd/MM/yyyy HH:mm' }}</div>
-                    <div><strong>Clôture :</strong> {{ selectedOpenElection.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
+                    <div><strong>Collège électoral :</strong> {{ election.college ? election.college.nom : 'Général' }}</div>
+                    <div><strong>Catégorie concernée :</strong> {{ election.college ? election.college.categorie : 'Toutes' }}</div>
+                    <div><strong>Ouverture :</strong> {{ election.dateOuverture | date:'dd/MM/yyyy HH:mm' }}</div>
+                    <div><strong>Clôture :</strong> {{ election.dateCloture | date:'dd/MM/yyyy HH:mm' }}</div>
                   </div>
-                  @if (selectedOpenElection.description) {
+                  @if (election.description) {
                     <p style="font-size: 0.85rem; color: #475569; margin: 0.25rem 0 0 0;">
-                      <em>{{ selectedOpenElection.description }}</em>
+                      <em>{{ election.description }}</em>
                     </p>
                   }
 
@@ -272,7 +287,7 @@ import { environment } from '../../environments/environment';
                       </span>
                     } @else {
                       <span style="color: #dc2626; font-weight: 600; font-size: 0.85rem;">
-                        ⚠️ Attention : Votre catégorie ({{ authService.currentUser()?.categorie }}) ne correspond pas au collège requis ({{ selectedOpenElection.college ? selectedOpenElection.college.categorie : 'Général' }}).
+                        ⚠️ Attention : Votre catégorie ({{ authService.currentUser()?.categorie }}) ne correspond pas au collège requis ({{ election.college ? election.college.categorie : 'Général' }}).
                       </span>
                     }
                   </div>
@@ -289,7 +304,7 @@ import { environment } from '../../environments/environment';
                   name="professionFoi"
                   placeholder="Décrivez vos engagements, vos propositions pour l'UASZ et les axes de votre mandat..."
                   required
-                  [disabled]="submitting || isAlreadyAppliedForSelected"
+                  [disabled]="submitting() || isAlreadyAppliedForSelected()"
                 ></textarea>
                 <small class="text-muted">Ce programme sera rendu public pour informer les électeurs.</small>
               </div>
@@ -303,7 +318,7 @@ import { environment } from '../../environments/environment';
                   [(ngModel)]="newCandidacy.biographie"
                   name="biographie"
                   placeholder="Présentez votre parcours académique à l'UASZ, vos expériences, vos mandats passés..."
-                  [disabled]="submitting || isAlreadyAppliedForSelected"
+                  [disabled]="submitting() || isAlreadyAppliedForSelected()"
                 ></textarea>
               </div>
 
@@ -317,7 +332,7 @@ import { environment } from '../../environments/environment';
                 <div class="grid grid-cols-2" style="gap: 1rem;">
                   <div class="form-group" style="margin-bottom: 0;">
                     <label class="form-label" style="font-size: 0.85rem;">CV / Justificatif académique (PDF, PNG, JPG)</label>
-                    <input type="file" class="form-control" (change)="onFileSelected($event, 'CV')" accept=".pdf,.png,.jpg,.jpeg" [disabled]="submitting || isAlreadyAppliedForSelected" />
+                    <input type="file" class="form-control" (change)="onFileSelected($event, 'CV')" accept=".pdf,.png,.jpg,.jpeg" [disabled]="submitting() || isAlreadyAppliedForSelected()" />
                     @if (selectedCvFile) {
                       <small style="color: var(--primary); font-weight: 600; display: block; margin-top: 0.25rem;">
                         ✓ {{ selectedCvFile.name }} ({{ (selectedCvFile.size / 1024).toFixed(1) }} Ko)
@@ -326,7 +341,7 @@ import { environment } from '../../environments/environment';
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
                     <label class="form-label" style="font-size: 0.85rem;">Photo d'identité / Campagne (PNG, JPG)</label>
-                    <input type="file" class="form-control" (change)="onFileSelected($event, 'PHOTO')" accept=".png,.jpg,.jpeg" [disabled]="submitting || isAlreadyAppliedForSelected" />
+                    <input type="file" class="form-control" (change)="onFileSelected($event, 'PHOTO')" accept=".png,.jpg,.jpeg" [disabled]="submitting() || isAlreadyAppliedForSelected()" />
                     @if (selectedPhotoFile) {
                       <small style="color: var(--primary); font-weight: 600; display: block; margin-top: 0.25rem;">
                         ✓ {{ selectedPhotoFile.name }} ({{ (selectedPhotoFile.size / 1024).toFixed(1) }} Ko)
@@ -336,19 +351,13 @@ import { environment } from '../../environments/environment';
                 </div>
               </div>
 
-              @if (applyError) {
-                <div class="alert alert-danger" style="margin-bottom: 1.25rem;">
-                  {{ applyError }}
-                </div>
-              }
-
               <button
                 type="submit"
                 class="btn btn-primary btn-block btn-lg"
-                [disabled]="submitting || !newCandidacy.electionId || !newCandidacy.professionFoi || isAlreadyAppliedForSelected"
+                [disabled]="submitting() || !newCandidacy.electionId || !newCandidacy.professionFoi || isAlreadyAppliedForSelected()"
               >
-                @if (submitting) {
-                  <span>⏳ Transmission en cours…</span>
+                @if (submitting()) {
+                  <span><span class="spin">⏳</span> Transmission en cours…</span>
                 } @else {
                   <span>Transmission de ma candidature</span>
                 }
@@ -361,7 +370,7 @@ import { environment } from '../../environments/environment';
       <!-- ========================================== -->
       <!-- ONGLET 3 : MES CANDIDATURES               -->
       <!-- ========================================== -->
-      @if (activeTab === 'MY_DOSSIER') {
+      @if (activeTab() === 'MY_DOSSIER') {
         @if (!authService.isAuthenticated()) {
           <div class="card text-center" style="padding: 3rem; max-width: 650px; margin: 0 auto;">
             <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
@@ -380,22 +389,28 @@ import { environment } from '../../environments/environment';
                 <h3>Mes Dossiers de Candidature</h3>
                 <p class="subtitle">Suivez l'état d'instruction de vos dossiers par la Commission électorale de l'UASZ.</p>
               </div>
-              <button class="btn btn-outline btn-sm" (click)="loadMyCandidacies()" [disabled]="loadingMyCandidacies">
-                🔄 Actualiser
+              <button class="btn btn-outline btn-sm" (click)="loadMyCandidacies()" [disabled]="loadingMyCandidacies()">
+                <span [class.spin]="loadingMyCandidacies()">🔄</span> Actualiser
               </button>
             </div>
 
-            @if (loadingMyCandidacies) {
-              <div class="text-center" style="padding: 3rem;">
-                <p>Chargement de vos dossiers de candidature...</p>
+            @if (loadingMyCandidacies()) {
+              <div class="text-center loading-card" style="padding: 3.5rem;">
+                <div class="spinner"></div>
+                <p style="margin-top: 1.25rem; color: var(--text-muted); font-size: 1.05rem;">
+                  Chargement de vos dossiers de candidature...
+                </p>
               </div>
-            } @else if (myCandidaciesError) {
-              <div class="alert alert-danger flex-between" style="margin-top: 1.5rem;">
-                <span>{{ myCandidaciesError }}</span>
-                <button class="btn btn-secondary btn-sm" (click)="loadMyCandidacies()">Réessayer</button>
+            } @else if (myCandidaciesError()) {
+              <div class="card error-card flex-between" style="padding: 2rem; border-left: 5px solid #dc2626; margin-top: 1.5rem;">
+                <div>
+                  <p class="text-danger" style="margin: 0; font-weight: 600;">{{ myCandidaciesError() }}</p>
+                  <small class="text-muted">Vérifiez votre connexion au serveur électoral.</small>
+                </div>
+                <button class="btn btn-primary btn-sm" (click)="loadMyCandidacies()">🔄 Réessayer</button>
               </div>
-            } @else if (myCandidacies.length === 0) {
-              <div class="text-center" style="padding: 3rem;">
+            } @else if (myCandidacies().length === 0) {
+              <div class="text-center" style="padding: 3.5rem;">
                 <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
                 <h4>Vous n'avez pas encore déposé de candidature</h4>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
@@ -407,7 +422,7 @@ import { environment } from '../../environments/environment';
               </div>
             } @else {
               <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
-                @for (c of myCandidacies; track c.id) {
+                @for (c of myCandidacies(); track c.id) {
                   <div class="card" style="background: #ffffff; border-left: 5px solid; box-shadow: 0 2px 4px rgba(0,0,0,0.05);" [style.border-left-color]="getStatusColor(c.statut)">
                     <div class="flex-between" style="margin-bottom: 1rem;">
                       <div>
@@ -620,27 +635,59 @@ import { environment } from '../../environments/environment';
       padding: 0.25rem 0.5rem;
       font-size: 0.75rem;
     }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    .spin {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .error-card {
+      background-color: #fef2f2;
+      border-color: #fecaca;
+    }
+    .text-danger {
+      color: #dc2626;
+    }
   `]
 })
 export class CandidaciesComponent implements OnInit {
   authService = inject(AuthService);
   private apiService = inject(ApiService);
   private route = inject(ActivatedRoute);
+  private cdr = inject(ChangeDetectorRef);
 
-  activeTab: 'LIST' | 'APPLY' | 'MY_DOSSIER' = 'LIST';
-  elections: Election[] = [];
-  candidaciesOpenElections: Election[] = [];
-  loadingOpenElections = false;
-  openElectionsError = '';
-  selectedElectionId: number | null = null;
-  selectedOpenElection: Election | null = null;
-  candidates: Candidacy[] = [];
-  loadingCandidates = false;
-  candidatesError = '';
+  // Signaux réactifs pour le mode Zoneless Angular 21
+  activeTab = signal<'LIST' | 'APPLY' | 'MY_DOSSIER'>('LIST');
 
-  myCandidacies: Candidacy[] = [];
-  loadingMyCandidacies = false;
-  myCandidaciesError = '';
+  // Onglet 1 : LISTE
+  elections = signal<Election[]>([]);
+  selectedElectionId = signal<number | null>(null);
+  candidates = signal<Candidacy[]>([]);
+  loadingCandidates = signal<boolean>(true);
+  candidatesError = signal<string>('');
+
+  // Onglet 2 : POSTULER
+  candidaciesOpenElections = signal<Election[]>([]);
+  loadingOpenElections = signal<boolean>(false);
+  openElectionsError = signal<string>('');
+  selectedOpenElection = signal<Election | null>(null);
+  isAlreadyAppliedForSelected = signal<boolean>(false);
+  alreadyAppliedCandidacy = signal<Candidacy | null>(null);
+
+  // Onglet 3 : MES CANDIDATURES
+  myCandidacies = signal<Candidacy[]>([]);
+  loadingMyCandidacies = signal<boolean>(false);
+  myCandidaciesError = signal<string>('');
 
   newCandidacy = {
     electionId: null as number | null,
@@ -651,12 +698,9 @@ export class CandidaciesComponent implements OnInit {
   selectedCvFile: File | null = null;
   selectedPhotoFile: File | null = null;
 
-  submitting = false;
-  applySuccess = '';
-  applyError = '';
-
-  isAlreadyAppliedForSelected = false;
-  alreadyAppliedCandidacy: Candidacy | null = null;
+  submitting = signal<boolean>(false);
+  applySuccess = signal<string>('');
+  applyError = signal<string>('');
 
   ngOnInit(): void {
     // 1. Lire les queryParams pour navigation directe (ex: ?tab=APPLY&electionId=8)
@@ -665,13 +709,14 @@ export class CandidaciesComponent implements OnInit {
       const electionIdParam = params.get('electionId');
 
       if (tabParam === 'APPLY' || tabParam === 'MY_DOSSIER' || tabParam === 'LIST') {
-        this.activeTab = tabParam;
+        this.activeTab.set(tabParam);
       }
       if (electionIdParam) {
         const parsedId = Number(electionIdParam);
-        this.selectedElectionId = parsedId;
+        this.selectedElectionId.set(parsedId);
         this.newCandidacy.electionId = parsedId;
       }
+      this.cdr.markForCheck();
     });
 
     // 2. Charger les données d'élections et candidatures
@@ -683,14 +728,13 @@ export class CandidaciesComponent implements OnInit {
   }
 
   setTab(tab: 'LIST' | 'APPLY' | 'MY_DOSSIER'): void {
-    this.activeTab = tab;
-    this.applySuccess = '';
-    this.applyError = '';
+    this.activeTab.set(tab);
+    this.applySuccess.set('');
+    this.applyError.set('');
 
     if (tab === 'LIST') {
       this.loadCandidates();
     } else if (tab === 'APPLY') {
-      // Recharger systématiquement les scrutins ouverts avec forceReload
       this.loadOpenElectionsData(true);
       if (this.authService.isAuthenticated()) {
         this.loadMyCandidacies();
@@ -698,22 +742,28 @@ export class CandidaciesComponent implements OnInit {
     } else if (tab === 'MY_DOSSIER') {
       this.loadMyCandidacies();
     }
+    this.cdr.markForCheck();
   }
 
   loadOpenElectionsData(forceReload: boolean = true): void {
-    this.loadingOpenElections = true;
-    this.openElectionsError = '';
+    this.loadingOpenElections.set(true);
+    this.openElectionsError.set('');
     if (forceReload) {
       this.apiService.invalidateElectionsCache();
     }
 
-    this.apiService.getOpenElectionsForCandidacy().pipe(
-      catchError(() => {
-        // Repli automatique sur getPublicElections si l'endpoint spécifique n'est pas encore actif
-        return this.apiService.getPublicElections(true);
-      }),
+    // Si authentifié, utilise getOpenElectionsForCandidacy avec repli automatique sur getPublicElections
+    const openStream$ = this.authService.isAuthenticated()
+      ? this.apiService.getOpenElectionsForCandidacy().pipe(
+          timeout(12000),
+          catchError(() => this.apiService.getPublicElections(true).pipe(timeout(12000)))
+        )
+      : this.apiService.getPublicElections(true).pipe(timeout(12000));
+
+    openStream$.pipe(
       finalize(() => {
-        this.loadingOpenElections = false;
+        this.loadingOpenElections.set(false);
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
@@ -729,132 +779,193 @@ export class CandidaciesComponent implements OnInit {
             list = list.filter(e => !e.college || !e.college.categorie || e.college.categorie === userCat);
           }
 
-          this.candidaciesOpenElections = list;
+          this.candidaciesOpenElections.set(list);
 
           // Conserver la sélection si elle est présente dans la liste, sinon prendre la première
-          if (this.newCandidacy.electionId && !this.candidaciesOpenElections.some(e => Number(e.id) === Number(this.newCandidacy.electionId))) {
+          if (this.newCandidacy.electionId && !list.some(e => Number(e.id) === Number(this.newCandidacy.electionId))) {
             this.newCandidacy.electionId = null;
           }
 
-          if (this.candidaciesOpenElections.length > 0 && !this.newCandidacy.electionId) {
-            this.newCandidacy.electionId = this.candidaciesOpenElections[0].id;
+          if (list.length > 0 && !this.newCandidacy.electionId) {
+            this.newCandidacy.electionId = list[0].id;
           }
 
           this.updateSelectedOpenElection();
           this.checkIfAlreadyApplied(this.newCandidacy.electionId);
+        } else {
+          this.candidaciesOpenElections.set([]);
+          this.openElectionsError.set(res?.message || 'Aucun scrutin ouvert trouvé.');
         }
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        this.openElectionsError = err?.error?.message || 'Impossible de charger la liste des scrutins ouverts aux candidatures.';
+        this.candidaciesOpenElections.set([]);
+        this.openElectionsError.set(err?.error?.message || 'Impossible de charger la liste des scrutins ouverts aux candidatures.');
+        this.cdr.markForCheck();
       }
     });
   }
 
   loadElectionsData(): void {
-    this.apiService.getPublicElections().subscribe({
+    this.apiService.getPublicElections().pipe(
+      timeout(12000),
+      catchError((err) => {
+        return of({ success: false, message: 'Erreur réseau', data: [] });
+      })
+    ).subscribe({
       next: (res) => {
         if (res.success && res.data) {
-          this.elections = res.data;
-          // Chargement initial des candidats
+          this.elections.set(res.data);
           this.loadCandidates();
         }
+        this.cdr.markForCheck();
       },
       error: () => {
-        this.candidatesError = 'Impossible de charger la liste des scrutins électoraux.';
+        this.candidatesError.set('Impossible de charger la liste des scrutins électoraux.');
+        this.cdr.markForCheck();
       }
     });
   }
 
   loadCandidates(): void {
-    this.loadingCandidates = true;
-    this.candidatesError = '';
+    this.loadingCandidates.set(true);
+    this.candidatesError.set('');
 
-    const request$ = this.selectedElectionId
-      ? this.apiService.getPublicCandidates(this.selectedElectionId)
+    const currentElectionId = this.selectedElectionId();
+    const request$ = currentElectionId
+      ? this.apiService.getPublicCandidates(currentElectionId)
       : this.apiService.getAllPublicCandidates();
 
     request$.pipe(
+      timeout(12000),
+      catchError((err) => {
+        return of({
+          success: false,
+          message: err?.name === 'TimeoutError'
+            ? 'Le délai d’attente a expiré lors de la récupération des candidatures.'
+            : (err?.error?.message || 'Erreur lors du chargement des candidatures officielles.'),
+          data: []
+        });
+      }),
       finalize(() => {
-        this.loadingCandidates = false;
+        this.loadingCandidates.set(false);
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
-        this.candidates = res.data || [];
+        if (res.success && res.data) {
+          this.candidates.set(res.data);
+        } else if (!res.success) {
+          this.candidates.set([]);
+          this.candidatesError.set(res.message || 'Erreur lors du chargement des candidatures.');
+        } else {
+          this.candidates.set([]);
+        }
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        this.candidatesError = err.error?.message || 'Erreur lors du chargement des candidatures officielles.';
+        this.candidates.set([]);
+        this.candidatesError.set(err?.error?.message || 'Erreur lors du chargement des candidatures officielles.');
+        this.cdr.markForCheck();
       }
     });
   }
 
   loadMyCandidacies(): void {
     if (!this.authService.isAuthenticated()) return;
-    this.loadingMyCandidacies = true;
-    this.myCandidaciesError = '';
+    this.loadingMyCandidacies.set(true);
+    this.myCandidaciesError.set('');
 
     this.apiService.getMyCandidacies().pipe(
+      timeout(12000),
+      catchError((err) => {
+        return of({
+          success: false,
+          message: err?.name === 'TimeoutError'
+            ? 'Le délai d’attente a expiré pour récupérer vos candidatures.'
+            : (err?.error?.message || 'Impossible de récupérer vos dossiers de candidature.'),
+          data: []
+        });
+      }),
       finalize(() => {
-        this.loadingMyCandidacies = false;
+        this.loadingMyCandidacies.set(false);
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
         if (res.success && res.data) {
-          this.myCandidacies = res.data;
+          this.myCandidacies.set(res.data);
           if (this.newCandidacy.electionId) {
             this.checkIfAlreadyApplied(this.newCandidacy.electionId);
           }
+        } else if (!res.success) {
+          this.myCandidacies.set([]);
+          this.myCandidaciesError.set(res.message || 'Impossible de récupérer vos dossiers de candidature.');
+        } else {
+          this.myCandidacies.set([]);
         }
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        this.myCandidaciesError = err.error?.message || 'Impossible de récupérer vos dossiers de candidature.';
+        this.myCandidacies.set([]);
+        this.myCandidaciesError.set(err?.error?.message || 'Impossible de récupérer vos dossiers de candidature.');
+        this.cdr.markForCheck();
       }
     });
   }
 
-  onElectionChange(): void {
+  onElectionFilterChange(newId: any): void {
+    const parsedId = newId ? Number(newId) : null;
+    this.selectedElectionId.set(parsedId);
     this.loadCandidates();
   }
 
   onElectionSelectChange(electionId: number | null): void {
+    this.newCandidacy.electionId = electionId ? Number(electionId) : null;
     this.updateSelectedOpenElection();
-    this.checkIfAlreadyApplied(electionId);
+    this.checkIfAlreadyApplied(this.newCandidacy.electionId);
+    this.cdr.markForCheck();
   }
 
   private updateSelectedOpenElection(): void {
     if (!this.newCandidacy.electionId) {
-      this.selectedOpenElection = null;
+      this.selectedOpenElection.set(null);
       return;
     }
-    this.selectedOpenElection = this.candidaciesOpenElections.find(e => e.id === Number(this.newCandidacy.electionId)) || null;
+    const found = this.candidaciesOpenElections().find(e => Number(e.id) === Number(this.newCandidacy.electionId)) || null;
+    this.selectedOpenElection.set(found);
+    this.cdr.markForCheck();
   }
 
   isUserEligibleForSelectedElection(): boolean {
-    if (!this.selectedOpenElection) return true;
+    const election = this.selectedOpenElection();
+    if (!election) return true;
     const currentUser = this.authService.currentUser();
     if (!currentUser) return false;
-    // Les super admins peuvent postuler pour tests
+    // Les super admins et commission électorale peuvent postuler pour tests
     if (this.authService.isSuperAdmin() || this.authService.isCommission()) return true;
     // Vérification de catégorie avec le collège
-    if (this.selectedOpenElection.college && this.selectedOpenElection.college.categorie) {
-      return this.selectedOpenElection.college.categorie === currentUser.categorie;
+    if (election.college && election.college.categorie) {
+      return election.college.categorie === currentUser.categorie;
     }
     return true;
   }
 
   private checkIfAlreadyApplied(electionId: number | null): void {
     if (!electionId) {
-      this.isAlreadyAppliedForSelected = false;
-      this.alreadyAppliedCandidacy = null;
+      this.isAlreadyAppliedForSelected.set(false);
+      this.alreadyAppliedCandidacy.set(null);
       return;
     }
-    const found = this.myCandidacies.find(c => Number(c.electionId) === Number(electionId));
+    const found = this.myCandidacies().find(c => Number(c.electionId) === Number(electionId));
     if (found) {
-      this.isAlreadyAppliedForSelected = true;
-      this.alreadyAppliedCandidacy = found;
+      this.isAlreadyAppliedForSelected.set(true);
+      this.alreadyAppliedCandidacy.set(found);
     } else {
-      this.isAlreadyAppliedForSelected = false;
-      this.alreadyAppliedCandidacy = null;
+      this.isAlreadyAppliedForSelected.set(false);
+      this.alreadyAppliedCandidacy.set(null);
     }
+    this.cdr.markForCheck();
   }
 
   onFileSelected(event: Event, type: 'CV' | 'PHOTO'): void {
@@ -863,10 +974,11 @@ export class CandidaciesComponent implements OnInit {
       const file = input.files[0];
       const maxBytes = 10 * 1024 * 1024; // 10 Mo
       if (file.size > maxBytes) {
-        this.applyError = `Le fichier « ${file.name} » dépasse la taille maximale autorisée (10 Mo).`;
+        this.applyError.set(`Le fichier « ${file.name} » dépasse la taille maximale autorisée (10 Mo).`);
         input.value = '';
         if (type === 'CV') this.selectedCvFile = null;
         if (type === 'PHOTO') this.selectedPhotoFile = null;
+        this.cdr.markForCheck();
         return;
       }
       const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
@@ -874,42 +986,44 @@ export class CandidaciesComponent implements OnInit {
       const allowedPhoto = ['.png', '.jpg', '.jpeg'];
       const allowed = type === 'CV' ? allowedCv : allowedPhoto;
       if (!allowed.includes(ext)) {
-        this.applyError = `Format non autorisé pour « ${file.name} ». Formats acceptés : ${allowed.join(', ')}`;
+        this.applyError.set(`Format non autorisé pour « ${file.name} ». Formats acceptés : ${allowed.join(', ')}`);
         input.value = '';
         if (type === 'CV') this.selectedCvFile = null;
         if (type === 'PHOTO') this.selectedPhotoFile = null;
+        this.cdr.markForCheck();
         return;
       }
-      this.applyError = '';
+      this.applyError.set('');
       if (type === 'CV') {
         this.selectedCvFile = file;
       } else if (type === 'PHOTO') {
         this.selectedPhotoFile = file;
       }
+      this.cdr.markForCheck();
     }
   }
 
   submitCandidacy(): void {
     // 1. Anti-double soumission immédiat
-    if (this.submitting) return;
+    if (this.submitting()) return;
 
     // 2. Vérification des données requises
     if (!this.newCandidacy.electionId) {
-      this.applyError = 'Veuillez sélectionner un scrutin électoral.';
+      this.applyError.set('Veuillez sélectionner un scrutin électoral.');
       return;
     }
     if (!this.newCandidacy.professionFoi || !this.newCandidacy.professionFoi.trim()) {
-      this.applyError = 'Veuillez renseigner votre profession de foi (programme électoral).';
+      this.applyError.set('Veuillez renseigner votre profession de foi (programme électoral).');
       return;
     }
-    if (this.isAlreadyAppliedForSelected) {
-      this.applyError = 'Une candidature a déjà été transmise pour ce scrutin. Les doublons ne sont pas autorisés.';
+    if (this.isAlreadyAppliedForSelected()) {
+      this.applyError.set('Une candidature a déjà été transmise pour ce scrutin. Les doublons ne sont pas autorisés.');
       return;
     }
 
-    this.submitting = true;
-    this.applySuccess = '';
-    this.applyError = '';
+    this.submitting.set(true);
+    this.applySuccess.set('');
+    this.applyError.set('');
 
     const formData = new FormData();
     formData.append('electionId', String(this.newCandidacy.electionId));
@@ -928,12 +1042,13 @@ export class CandidaciesComponent implements OnInit {
     this.apiService.applyCandidacyMultipart(formData).pipe(
       timeout(30000),
       finalize(() => {
-        this.submitting = false;
+        this.submitting.set(false);
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: (res) => {
         const candidacyId = res.data?.id;
-        this.applySuccess = `Votre candidature a été transmise avec succès ! (Dossier #${candidacyId} enregistré dans PostgreSQL).`;
+        this.applySuccess.set(`Votre candidature a été transmise avec succès ! (Dossier #${candidacyId} enregistré dans PostgreSQL).`);
         this.newCandidacy.professionFoi = '';
         this.newCandidacy.biographie = '';
         this.selectedCvFile = null;
@@ -942,17 +1057,20 @@ export class CandidaciesComponent implements OnInit {
         // Rechargement des listes
         this.loadCandidates();
         this.loadMyCandidacies();
+        this.cdr.markForCheck();
+
         setTimeout(() => {
           this.setTab('MY_DOSSIER');
         }, 1500);
       },
       error: (err) => {
         if (err.name === 'TimeoutError') {
-          this.applyError = 'Le délai d’attente a expiré. Veuillez vérifier dans l’onglet « Mes Candidatures » si votre dossier a été enregistré avant de réessayer.';
+          this.applyError.set('Le délai d’attente a expiré. Veuillez vérifier dans l’onglet « Mes Candidatures » si votre dossier a été enregistré avant de réessayer.');
         } else {
-          this.applyError = err.error?.message || err.message || 'Erreur lors de la transmission du dossier de candidature.';
+          this.applyError.set(err.error?.message || err.message || 'Erreur lors de la transmission du dossier de candidature.');
         }
         this.loadMyCandidacies();
+        this.cdr.markForCheck();
       }
     });
   }
@@ -967,12 +1085,16 @@ export class CandidaciesComponent implements OnInit {
         return;
       }
       const type = file.type.startsWith('image/') ? 'PHOTO' : 'CV';
-      this.apiService.uploadCandidacyDocument(candidacyId, type, file).subscribe({
+      this.apiService.uploadCandidacyDocument(candidacyId, type, file).pipe(
+        timeout(20000)
+      ).subscribe({
         next: () => {
           this.loadMyCandidacies();
+          this.cdr.markForCheck();
         },
         error: (err) => {
           alert(err.error?.message || 'Erreur lors du téléversement du document.');
+          this.cdr.markForCheck();
         }
       });
     }
