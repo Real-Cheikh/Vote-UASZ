@@ -52,7 +52,7 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
               <p style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #78350f;">
                 Le serveur backend n'étant pas raccordé à la messagerie SMTP institutionnelle (@zig.univ.sn), votre code OTP à usage unique est mis à disposition ci-dessous pour tester le processus électoral complet :
               </p>
-              <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 0.75rem 1rem; border-radius: 6px; border: 1px dashed #d97706; margin-bottom: 0.5rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 0.75rem 1rem; border-radius: 6px; border: 1px dashed #d97706; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.75rem; box-sizing: border-box; width: 100%;">
                 <div>
                   <span style="font-size: 0.75rem; text-transform: uppercase; color: #92400e; font-weight: 700; display: block;">Code OTP Généré (Valide 5 min) :</span>
                   <code style="font-size: 1.75rem; font-weight: 900; letter-spacing: 0.25em; color: #1e293b;">{{ otpSimulationCode }}</code>
