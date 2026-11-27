@@ -1,7 +1,7 @@
 # Configuration de déploiement Railway pour Vote UASZ Backend
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "backend/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/api/v1/actuator/health"
