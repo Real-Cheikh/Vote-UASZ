@@ -1,12 +1,14 @@
 package sn.uasz.voteuasz.reports;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import sn.uasz.voteuasz.elections.Election;
 
 import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "official_reports")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class OfficialReport {
 
     @Id
@@ -57,8 +59,13 @@ public class OfficialReport {
         this.numeroRapport = numeroRapport;
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public Election getElection() {
         return election;
+    }
+
+    public Long getElectionId() {
+        return election != null ? election.getId() : null;
     }
 
     public void setElection(Election election) {
