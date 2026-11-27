@@ -9,11 +9,11 @@ COPY src src
 RUN mvn -B clean package -DskipTests
 
 # Étape 2 : image d'exécution légère et sécurisée
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-RUN addgroup -S uasz && adduser -S voteuasz -G uasz \
+RUN groupadd -r uasz && useradd -r -g uasz voteuasz \
     && mkdir -p /app/uploads \
     && chown -R voteuasz:uasz /app
 
