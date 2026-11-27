@@ -53,7 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/campaigns/candidacy/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/results/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/voting/verify-receipt/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/reports/election/**/pdf", "/reports/verify/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/reports/election/*/pdf", "/reports/election/**", "/reports/verify/**").permitAll()
 
                         // Documentation OpenAPI / Swagger UI
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

@@ -1,5 +1,5 @@
 export const environment = {
   production: false,
-  apiUrl: 'https://voteuasz-backend.onrender.com/api/v1',
-  wsUrl: 'https://voteuasz-backend.onrender.com/api/v1/ws'
+  apiUrl: 'https://vote-uasz-production.up.railway.app/api/v1',
+  wsUrl: 'https://vote-uasz-production.up.railway.app/api/v1/ws'
 };
