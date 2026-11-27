@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
@@ -522,6 +522,7 @@ import { Candidacy, Election, VoteReceipt } from '../core/models/models';
 export class VotingComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private apiService = inject(ApiService);
+  private cdr = inject(ChangeDetectorRef);
 
   electionId!: number;
   election: Election | null = null;
@@ -579,12 +580,14 @@ export class VotingComponent implements OnInit, OnDestroy {
         if (this.election.statut !== 'VOTING_OPEN') {
           this.electionError = `Ce scrutin n'est pas ouvert au vote actuellement (statut officiel : ${this.election.statut}).`;
         }
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.loading = false;
         this.electionError = err.status === 404
           ? 'Scrutin électoral introuvable.'
           : 'Erreur lors du chargement des informations du scrutin ou des candidats.';
+        this.cdr.markForCheck();
       }
     });
   }
@@ -598,10 +601,12 @@ export class VotingComponent implements OnInit, OnDestroy {
         this.otpSent = true;
         this.otpMessage = `Un code de sécurité a été envoyé à ${res.data.destinationMasquee}. Il expire dans 5 minutes.`;
         this.startCountdown(res.data.validiteSecondes || 300);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.submitting = false;
         this.errorMessage = err.error?.message || 'Erreur lors de la génération du code OTP.';
+        this.cdr.markForCheck();
       }
     });
   }
@@ -618,10 +623,12 @@ export class VotingComponent implements OnInit, OnDestroy {
         this.voteToken = res.data.voteToken;
         this.step = 2; // Passage à l'isoloir anonyme
         if (this.countdownTimer) clearInterval(this.countdownTimer);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.submitting = false;
         this.errorMessage = err.error?.message || 'Code OTP invalide ou expiré.';
+        this.cdr.markForCheck();
       }
     });
   }
@@ -674,6 +681,7 @@ export class VotingComponent implements OnInit, OnDestroy {
         this.showConfirmModal = false;
         this.receipt = res.data;
         this.step = 3; // Confirmation
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.submitting = false;
@@ -683,6 +691,7 @@ export class VotingComponent implements OnInit, OnDestroy {
         } else {
           this.errorMessage = err.error?.message || "Échec de l'enregistrement du bulletin dans l'urne.";
         }
+        this.cdr.markForCheck();
       }
     });
   }
@@ -698,6 +707,7 @@ export class VotingComponent implements OnInit, OnDestroy {
         this.errorMessage = 'Le code OTP a expiré. Veuillez en redemander un nouveau.';
         this.otpSent = false;
       }
+      this.cdr.markForCheck();
     }, 1000);
   }
 

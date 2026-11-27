@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -268,6 +268,7 @@ import { Election } from '../core/models/models';
 })
 export class ElectionListComponent implements OnInit {
   private apiService = inject(ApiService);
+  private cdr = inject(ChangeDetectorRef);
 
   elections: Election[] = [];
   filteredElections: Election[] = [];
@@ -291,10 +292,12 @@ export class ElectionListComponent implements OnInit {
           this.elections = res.data;
           this.applyFilter();
         }
+        this.cdr.markForCheck();
       },
       error: (err) => {
         this.loading = false;
         this.errorMessage = err.error?.message || 'Impossible de joindre le serveur électoral. Veuillez vérifier votre connexion.';
+        this.cdr.markForCheck();
       }
     });
   }

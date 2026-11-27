@@ -104,7 +104,8 @@ export interface Eligibility {
   electionId: number;
   election: Election;
   eligible: boolean;
-  aVote: boolean;
+  aVote?: boolean;
+  avote?: boolean;
   dateVote?: string;
   motifIneligibilite?: string;
 }
