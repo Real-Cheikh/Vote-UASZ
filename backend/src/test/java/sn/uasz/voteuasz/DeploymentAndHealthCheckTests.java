@@ -2,15 +2,19 @@ package sn.uasz.voteuasz;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.SpringApplication;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.StandardEnvironment;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.boot.actuate.health.Status;
 import org.springframework.mock.env.MockEnvironment;
 import sn.uasz.voteuasz.common.DatabaseUrlEnvironmentPostProcessor;
+import sn.uasz.voteuasz.security.TomcatHealthCheckConfig;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@DisplayName("Tests de robustesse du déploiement et des configurations Render")
+@DisplayName("Tests de robustesse du déploiement et des configurations Koyeb/Render")
 class DeploymentAndHealthCheckTests {
 
     private final DatabaseUrlEnvironmentPostProcessor postProcessor = new DatabaseUrlEnvironmentPostProcessor();
@@ -55,5 +59,18 @@ class DeploymentAndHealthCheckTests {
 
         // L'URL JDBC reste inchangée
         assertNull(env.getProperty("spring.datasource.username"));
+    }
+
+    @Test
+    @DisplayName("TomcatHealthCheckConfig s'initialise correctement avec le fournisseur HealthEndpoint")
+    @SuppressWarnings("unchecked")
+    void testTomcatHealthCheckConfigInitialization() {
+        ObjectProvider<HealthEndpoint> provider = mock(ObjectProvider.class);
+        HealthEndpoint healthEndpoint = mock(HealthEndpoint.class);
+        when(provider.getIfAvailable()).thenReturn(healthEndpoint);
+        when(healthEndpoint.health()).thenReturn(Health.up().build());
+
+        TomcatHealthCheckConfig config = new TomcatHealthCheckConfig(provider);
+        assertNotNull(config.tomcatHealthCheckCustomizer());
     }
 }
