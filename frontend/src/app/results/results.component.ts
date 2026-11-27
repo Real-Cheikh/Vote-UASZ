@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, timeout, catchError, of, finalize } from 'rxjs';
 import { ApiService } from '../core/services/api.service';
 import { WebSocketService } from '../core/services/websocket.service';
 import { Election, ElectionResult } from '../core/models/models';
@@ -22,7 +22,7 @@ import { Election, ElectionResult } from '../core/models/models';
 
         <!-- Indicateur de synchronisation temps réel -->
         <div class="sync-status-box">
-          @if (wsConnected) {
+          @if (wsConnected()) {
             <span class="status-pill connected">
               <span class="dot-indicator green-pulse"></span>
               En Direct (WebSocket Actif)
@@ -34,39 +34,81 @@ import { Election, ElectionResult } from '../core/models/models';
             </span>
           }
           <div class="last-sync-label">
-            Dernière mise à jour : <strong>{{ lastUpdated | date:'HH:mm:ss' }}</strong>
+            Dernière mise à jour : <strong>{{ lastUpdated() | date:'HH:mm:ss' }}</strong>
           </div>
         </div>
       </div>
 
       <!-- Sélecteur d'élection -->
       <div class="card selector-card">
-        <label class="form-label">Sélectionner un scrutin clôturé avec résultats publiés :</label>
-        <select class="form-control" [(ngModel)]="selectedElectionId" (change)="onElectionChange()">
-          @for (e of publishedElections; track e.id) {
-            <option [value]="e.id">{{ e.titre }}</option>
-          }
-        </select>
+        <label class="form-label" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">
+          Sélectionner un scrutin clôturé avec résultats publiés :
+        </label>
+        <div class="selector-controls">
+          <select
+            class="form-control"
+            [ngModel]="selectedElectionId()"
+            (ngModelChange)="onElectionSelect($event)"
+            [disabled]="loading() && publishedElections().length === 0"
+            style="flex: 1; min-width: 260px;"
+          >
+            @for (e of publishedElections(); track e.id) {
+              <option [value]="e.id">{{ e.titre }}</option>
+            }
+          </select>
+          <button
+            class="btn btn-outline btn-sm"
+            (click)="reloadCurrent()"
+            [disabled]="loading()"
+            title="Actualiser les résultats de ce scrutin"
+          >
+            <span [class.spin]="loading()">🔄</span> Actualiser
+          </button>
+        </div>
       </div>
 
-      @if (loading) {
-        <div class="card text-center" style="padding: 3rem;">
-          <p>Chargement des résultats officiels...</p>
+      <!-- État 1 : Chargement avec indicateur visuel -->
+      @if (loading()) {
+        <div class="card text-center loading-card" style="padding: 3.5rem;">
+          <div class="spinner"></div>
+          <p style="margin-top: 1.25rem; color: var(--text-muted); font-size: 1.05rem;">
+            Chargement des résultats officiels...
+          </p>
         </div>
-      } @else if (errorMessage) {
-        <div class="card text-center" style="padding: 3rem;">
-          <p>{{ errorMessage }}</p>
+      }
+
+      <!-- État 4 : Erreur API avec message compréhensible et bouton Réessayer -->
+      @else if (errorMessage()) {
+        <div class="card error-card" style="padding: 2.5rem; text-align: center; border-left: 5px solid #dc2626;">
+          <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">⚠️</div>
+          <h4 style="margin-bottom: 0.5rem; color: #b91c1c;">Information sur les résultats</h4>
+          <p class="text-muted" style="margin-bottom: 1.5rem; max-width: 520px; margin-left: auto; margin-right: auto;">
+            {{ errorMessage() }}
+          </p>
+          <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" (click)="loadResults()">
+              🔄 Réessayer
+            </button>
+            <a routerLink="/elections" class="btn btn-outline btn-sm">
+              Consulter la liste des scrutins
+            </a>
+          </div>
         </div>
-      } @else if (results) {
-        <!-- Bannière vainqueur (si candidat en tête) -->
-        @if (winnerCandidate) {
+      }
+
+      <!-- État 2 & 3 : Résultats disponibles -->
+      @else if (results(); as res) {
+        <!-- Bannière vainqueur (si candidat présent) -->
+        @if (winnerCandidate; as winner) {
           <div class="card winner-card">
             <div class="winner-trophy">🏆</div>
             <div>
-              <span class="winner-tag">Candidat en tête des suffrages</span>
-              <h3>{{ winnerCandidate.candidatePrenom }} {{ winnerCandidate.candidateNom }}</h3>
+              <span class="winner-tag">
+                {{ winner.voixObtenues > 0 ? 'Candidat en tête des suffrages' : 'Candidature enregistrée' }}
+              </span>
+              <h3>{{ winner.candidatePrenom }} {{ winner.candidateNom }}</h3>
               <p class="winner-stats">
-                {{ winnerCandidate.voixObtenues }} voix ({{ winnerCandidate.pourcentage }}%) des suffrages exprimés
+                {{ winner.voixObtenues }} voix ({{ winner.pourcentage }}%) des suffrages exprimés
               </p>
             </div>
           </div>
@@ -75,19 +117,19 @@ import { Election, ElectionResult } from '../core/models/models';
         <!-- Statistiques de participation -->
         <div class="grid grid-cols-4 stats-grid">
           <div class="card stat-card">
-            <span class="stat-value">{{ results.inscritsTotal }}</span>
+            <span class="stat-value">{{ res.inscritsTotal }}</span>
             <span class="stat-label">Électeurs Inscrits</span>
           </div>
           <div class="card stat-card">
-            <span class="stat-value">{{ results.votantsTotal }}</span>
+            <span class="stat-value">{{ res.votantsTotal }}</span>
             <span class="stat-label">Votants (Émargements)</span>
           </div>
           <div class="card stat-card">
-            <span class="stat-value">{{ results.bulletinsValides }}</span>
+            <span class="stat-value">{{ res.bulletinsValides }}</span>
             <span class="stat-label">Bulletins Valides</span>
           </div>
           <div class="card stat-card highlight">
-            <span class="stat-value">{{ results.tauxParticipation }}%</span>
+            <span class="stat-value">{{ res.tauxParticipation }}%</span>
             <span class="stat-label">Taux de Participation</span>
           </div>
         </div>
@@ -95,33 +137,55 @@ import { Election, ElectionResult } from '../core/models/models';
         <!-- Détail des voix par candidat -->
         <div class="card candidates-results-card">
           <div class="card-header flex-between">
-            <h3>Répartition des Suffrages Exprimés</h3>
-            <button (click)="downloadPdf()" class="btn btn-outline btn-sm">
-              📄 Télécharger le Procès-Verbal Officiel (PDF)
+            <div>
+              <h3>Répartition des Suffrages Exprimés</h3>
+              <p class="text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
+                Scrutin : <strong>{{ res.electionTitre }}</strong>
+              </p>
+            </div>
+            <button
+              (click)="downloadPdf()"
+              class="btn btn-outline btn-sm"
+              [disabled]="downloadingPdf()"
+            >
+              @if (downloadingPdf()) {
+                <span class="spin">⏳</span> Génération du PDF...
+              } @else {
+                📄 Télécharger le Procès-Verbal Officiel (PDF)
+              }
             </button>
           </div>
 
           <div class="results-list">
-            @for (cand of results.resultatsCandidats; track cand.candidacyId) {
-              <div class="result-item">
-                <div class="result-info">
-                  <strong>{{ cand.candidatePrenom }} {{ cand.candidateNom }}</strong>
-                  <span class="votes-count">{{ cand.voixObtenues }} voix • {{ cand.pourcentage }}%</span>
+            @if (res.resultatsCandidats && res.resultatsCandidats.length > 0) {
+              @for (cand of res.resultatsCandidats; track cand.candidacyId) {
+                <div class="result-item">
+                  <div class="result-info">
+                    <strong>{{ cand.candidatePrenom }} {{ cand.candidateNom }}</strong>
+                    <span class="votes-count">{{ cand.voixObtenues }} voix • {{ cand.pourcentage }}%</span>
+                  </div>
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" [style.width.%]="cand.pourcentage"></div>
+                  </div>
                 </div>
-                <div class="progress-bar-bg">
-                  <div class="progress-bar-fill" [style.width.%]="cand.pourcentage"></div>
-                </div>
+              }
+            } @else {
+              <div class="card text-center" style="padding: 2rem; background: #f8fafc; border: 1px dashed #cbd5e1;">
+                <p class="text-muted" style="margin: 0;">Aucune candidature officielle enregistrée pour ce scrutin.</p>
               </div>
             }
 
-            @if (results.bulletinsBlancs > 0) {
+            @if (res.bulletinsBlancs > 0) {
               <div class="result-item blank-result">
                 <div class="result-info">
                   <span>Votes Blancs</span>
-                  <span class="votes-count">{{ results.bulletinsBlancs }} votes</span>
+                  <span class="votes-count">{{ res.bulletinsBlancs }} votes</span>
                 </div>
                 <div class="progress-bar-bg">
-                  <div class="progress-bar-fill blank" [style.width.%]="(results.bulletinsBlancs / results.votantsTotal) * 100"></div>
+                  <div
+                    class="progress-bar-fill blank"
+                    [style.width.%]="res.votantsTotal > 0 ? (res.bulletinsBlancs / res.votantsTotal) * 100 : 0"
+                  ></div>
                 </div>
               </div>
             }
@@ -129,7 +193,20 @@ import { Election, ElectionResult } from '../core/models/models';
         </div>
 
         <div class="alert alert-info" style="margin-top: 1.5rem;">
-          <strong>Certification cryptographique :</strong> Les résultats ci-dessus sont certifiés conformes au dépouillement effectué par la Commission électorale UASZ. Le procès-verbal officiel PDF comporte une empreinte numérique SHA-256 infalsifiable.
+          <strong>Certification cryptographique :</strong> Les résultats ci-dessus sont certifiés conformes au dépouillement officiel validé par la Commission électorale UASZ. Le procès-verbal PDF comporte une empreinte numérique SHA-256 infalsifiable.
+        </div>
+      }
+
+      <!-- État 3 : Aucun résultat publié -->
+      @else {
+        <div class="card text-center" style="padding: 3.5rem;">
+          <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📋</div>
+          <p style="font-size: 1.05rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+            Aucun résultat officiel publié n'est disponible pour ce scrutin.
+          </p>
+          <a routerLink="/elections" class="btn btn-outline">
+            Voir tous les scrutins publics
+          </a>
         </div>
       }
     </div>
@@ -198,6 +275,12 @@ import { Election, ElectionResult } from '../core/models/models';
       margin-bottom: 2rem;
       padding: 1.25rem;
     }
+    .selector-controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
     .winner-card {
       display: flex;
       align-items: center;
@@ -260,6 +343,9 @@ import { Election, ElectionResult } from '../core/models/models';
       gap: 1.5rem;
       padding-top: 1rem;
     }
+    .result-item {
+      padding: 0.5rem 0;
+    }
     .result-info {
       display: flex;
       justify-content: space-between;
@@ -285,21 +371,43 @@ import { Election, ElectionResult } from '../core/models/models';
     .progress-bar-fill.blank {
       background: #94a3b8;
     }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e2e8f0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    .spin {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .error-card {
+      background-color: #fef2f2;
+      border-color: #fecaca;
+    }
   `]
 })
 export class ResultsComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private apiService = inject(ApiService);
   private wsService = inject(WebSocketService);
+  private cdr = inject(ChangeDetectorRef);
 
-  publishedElections: Election[] = [];
-  selectedElectionId: number | null = null;
-  results: ElectionResult | null = null;
-  loading = true;
-  errorMessage = '';
-
-  wsConnected = false;
-  lastUpdated: Date = new Date();
+  // Signaux réactifs natifs pour compatibilité Zoneless Angular 21
+  publishedElections = signal<Election[]>([]);
+  selectedElectionId = signal<number | null>(null);
+  results = signal<ElectionResult | null>(null);
+  loading = signal<boolean>(true);
+  errorMessage = signal<string>('');
+  wsConnected = signal<boolean>(false);
+  lastUpdated = signal<Date>(new Date());
+  downloadingPdf = signal<boolean>(false);
 
   private wsSubscription: Subscription | null = null;
   private statusSubscription: Subscription | null = null;
@@ -310,41 +418,19 @@ export class ResultsComponent implements OnInit, OnDestroy {
     this.wsService.connect();
 
     this.statusSubscription = this.wsService.getConnectionStatus().subscribe((status) => {
-      this.wsConnected = status;
+      this.wsConnected.set(status);
+      this.cdr.markForCheck();
     });
 
     // 2. Définir le fallback polling régulier toutes les 10 secondes si WebSocket indisponible
     this.pollingTimer = setInterval(() => {
-      if (!this.wsConnected && this.selectedElectionId) {
+      if (!this.wsConnected() && this.selectedElectionId()) {
         this.refreshResultsQuietly();
       }
     }, 10000);
 
     // 3. Charger la liste des scrutins publiés
-    this.apiService.getPublicElections().subscribe({
-      next: (res) => {
-        if (res.success && res.data) {
-          this.publishedElections = res.data.filter(e => e.statut === 'RESULTS_PUBLISHED' || e.statut === 'ARCHIVED');
-          const idParam = this.route.snapshot.paramMap.get('id');
-
-          if (idParam) {
-            this.selectedElectionId = Number(idParam);
-          } else if (this.publishedElections.length > 0) {
-            this.selectedElectionId = this.publishedElections[0].id;
-          }
-
-          if (this.selectedElectionId) {
-            this.loadResults();
-          } else {
-            this.loading = false;
-            this.errorMessage = 'Aucun scrutin avec résultats publiés pour le moment.';
-          }
-        }
-      },
-      error: () => {
-        this.loading = false;
-      }
-    });
+    this.loadPublishedElections();
   }
 
   ngOnDestroy(): void {
@@ -357,79 +443,186 @@ export class ResultsComponent implements OnInit, OnDestroy {
     if (this.statusSubscription) {
       this.statusSubscription.unsubscribe();
     }
-    if (this.selectedElectionId) {
-      this.wsService.unsubscribeFromElection(this.selectedElectionId);
+    const currentId = this.selectedElectionId();
+    if (currentId) {
+      this.wsService.unsubscribeFromElection(currentId);
     }
   }
 
-  onElectionChange(): void {
-    if (this.selectedElectionId) {
-      this.loadResults();
+  loadPublishedElections(): void {
+    this.loading.set(true);
+    this.errorMessage.set('');
+
+    this.apiService.getPublicElections().pipe(
+      timeout(12000),
+      catchError((err) => {
+        return of({
+          success: false,
+          message: err?.name === 'TimeoutError'
+            ? 'Le délai d’attente a expiré lors de la récupération des scrutins.'
+            : (err?.error?.message || 'Impossible de joindre le serveur électoral pour récupérer les scrutins.'),
+          data: []
+        });
+      })
+    ).subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          const published = res.data.filter(e => e.statut === 'RESULTS_PUBLISHED' || e.statut === 'ARCHIVED');
+          this.publishedElections.set(published);
+
+          const idParam = this.route.snapshot.paramMap.get('id');
+          if (idParam) {
+            this.selectedElectionId.set(Number(idParam));
+          } else if (published.length > 0) {
+            this.selectedElectionId.set(published[0].id);
+          }
+
+          if (this.selectedElectionId()) {
+            this.loadResults();
+          } else {
+            this.loading.set(false);
+            this.errorMessage.set('Aucun scrutin clôturé avec résultats publiés pour le moment.');
+            this.cdr.markForCheck();
+          }
+        } else {
+          this.loading.set(false);
+          this.errorMessage.set(res.message || 'Impossible de charger la liste des scrutins.');
+          this.cdr.markForCheck();
+        }
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.errorMessage.set(err?.error?.message || 'Erreur lors du chargement des scrutins.');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  onElectionSelect(newId: any): void {
+    const parsedId = Number(newId);
+    if (!parsedId || parsedId === this.selectedElectionId()) return;
+
+    // Se désabonner de l'ancien canal WebSocket
+    const oldId = this.selectedElectionId();
+    if (oldId) {
+      this.wsService.unsubscribeFromElection(oldId);
     }
+    if (this.wsSubscription) {
+      this.wsSubscription.unsubscribe();
+      this.wsSubscription = null;
+    }
+
+    this.selectedElectionId.set(parsedId);
+    this.loadResults();
+  }
+
+  reloadCurrent(): void {
+    this.loadResults();
   }
 
   loadResults(): void {
-    if (!this.selectedElectionId) return;
+    const electionId = this.selectedElectionId();
+    if (!electionId) {
+      this.loading.set(false);
+      return;
+    }
 
-    this.loading = true;
-    this.errorMessage = '';
+    this.loading.set(true);
+    this.errorMessage.set('');
 
-    this.apiService.getPublicResults(this.selectedElectionId).subscribe({
+    this.apiService.getPublicResults(electionId).pipe(
+      timeout(12000),
+      catchError((err) => {
+        return of({
+          success: false,
+          message: err?.name === 'TimeoutError'
+            ? 'Le délai d’attente a expiré lors du chargement des résultats.'
+            : (err?.error?.message || 'Résultats officiels non encore publiés pour ce scrutin.'),
+          data: null
+        });
+      })
+    ).subscribe({
       next: (res) => {
-        this.loading = false;
-        this.results = res.data;
-        this.lastUpdated = new Date();
-        this.subscribeWebSocket();
+        this.loading.set(false);
+        if (res && res.success && res.data) {
+          this.results.set(res.data);
+          this.lastUpdated.set(new Date());
+          this.subscribeWebSocket(electionId);
+        } else {
+          this.results.set(null);
+          this.errorMessage.set(res?.message || 'Résultats officiels non encore publiés pour ce scrutin.');
+        }
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        this.loading = false;
-        this.errorMessage = err.error?.message || 'Résultats non encore publiés pour ce scrutin.';
+        this.loading.set(false);
+        this.results.set(null);
+        this.errorMessage.set(err?.error?.message || 'Erreur de connexion au serveur pour récupérer les résultats.');
+        this.cdr.markForCheck();
       }
     });
   }
 
   refreshResultsQuietly(): void {
-    if (!this.selectedElectionId) return;
+    const electionId = this.selectedElectionId();
+    if (!electionId) return;
 
-    this.apiService.getPublicResults(this.selectedElectionId).subscribe({
+    this.apiService.getPublicResults(electionId).pipe(
+      timeout(8000),
+      catchError(() => of(null))
+    ).subscribe({
       next: (res) => {
-        if (res.data) {
-          this.results = res.data;
-          this.lastUpdated = new Date();
+        if (res && res.success && res.data) {
+          this.results.set(res.data);
+          this.lastUpdated.set(new Date());
+          this.cdr.markForCheck();
         }
-      },
-      error: () => {}
+      }
     });
   }
 
-  subscribeWebSocket(): void {
-    if (!this.selectedElectionId) return;
-    if (this.wsSubscription) this.wsSubscription.unsubscribe();
+  subscribeWebSocket(electionId: number): void {
+    if (!electionId) return;
+    if (this.wsSubscription) {
+      this.wsSubscription.unsubscribe();
+    }
 
-    this.wsSubscription = this.wsService.subscribeToElection(this.selectedElectionId).subscribe({
+    this.wsSubscription = this.wsService.subscribeToElection(electionId).subscribe({
       next: (updatedResult) => {
-        this.results = updatedResult;
-        this.lastUpdated = new Date();
+        if (updatedResult && updatedResult.electionId === this.selectedElectionId()) {
+          this.results.set(updatedResult);
+          this.lastUpdated.set(new Date());
+          this.cdr.markForCheck();
+        }
       }
     });
   }
 
   get winnerCandidate() {
-    if (!this.results || !this.results.resultatsCandidats || this.results.resultatsCandidats.length === 0) {
+    const res = this.results();
+    if (!res || !res.resultatsCandidats || res.resultatsCandidats.length === 0) {
       return null;
     }
-    const sorted = [...this.results.resultatsCandidats].sort((a, b) => b.voixObtenues - a.voixObtenues);
+    const sorted = [...res.resultatsCandidats].sort((a, b) => b.voixObtenues - a.voixObtenues);
     return sorted[0];
   }
 
   downloadPdf(): void {
-    if (!this.selectedElectionId) return;
-    this.apiService.downloadReportPdf(this.selectedElectionId).subscribe({
+    const electionId = this.selectedElectionId();
+    if (!electionId) return;
+
+    this.downloadingPdf.set(true);
+    this.apiService.downloadReportPdf(electionId).pipe(
+      finalize(() => {
+        this.downloadingPdf.set(false);
+        this.cdr.markForCheck();
+      })
+    ).subscribe({
       next: (blob) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `PV_Officiel_Election_UASZ_${this.selectedElectionId}.pdf`;
+        a.download = `PV_Officiel_Election_UASZ_${electionId}.pdf`;
         a.click();
         window.URL.revokeObjectURL(url);
       },
