@@ -79,6 +79,9 @@ management:
       show-details: when-authorized
       probes:
         enabled: true
+  health:
+    mail:
+      enabled: false
 
 ---
 # PROFIL DEV (PostgreSQL local avec repli H2 automatique si absent)
