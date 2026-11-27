@@ -8,8 +8,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 import sn.uasz.voteuasz.colleges.College;
 import sn.uasz.voteuasz.colleges.CollegeRepository;
+import sn.uasz.voteuasz.common.BusinessException;
+import sn.uasz.voteuasz.common.RateLimitExceededException;
 import sn.uasz.voteuasz.common.VoteException;
 import sn.uasz.voteuasz.elections.Election;
 import sn.uasz.voteuasz.elections.ElectionRepository;
@@ -26,7 +31,12 @@ import sn.uasz.voteuasz.users.User;
 import sn.uasz.voteuasz.users.UserCategory;
 import sn.uasz.voteuasz.users.UserRepository;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,6 +69,9 @@ public class OtpSecurityTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private User demoUser;
     private User officialUser;
     private Election demoElection;
@@ -69,6 +82,8 @@ public class OtpSecurityTests {
 
     @BeforeEach
     void setUp() {
+        otpRepository.deleteAll();
+
         Role roleElecteur = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
                 .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_ELECTEUR, "Électeur")));
 
@@ -150,31 +165,25 @@ public class OtpSecurityTests {
     }
 
     @Test
-    @DisplayName("Sécurité 1 : Les scrutins officiels ne reçoivent JAMAIS de simulationCode en clair")
-    void testOfficialElectionNeverReturnsSimulationCode() throws Exception {
-        // Même pour un compte de test, un scrutin officiel ne divulgue JAMAIS le code OTP dans l'API
-        OtpChallengeResponseDto challenge = otpService.generateOtp(demoUser.getId(), officialElection.getId());
-        assertNotNull(challenge);
-        assertEquals("EMAIL", challenge.getMode());
-        assertNull(challenge.getSimulationCode(), "simulationCode doit impérativement être NULL pour un scrutin officiel");
-        assertFalse(challenge.getMessage().contains("Mode Démonstration"));
+    @DisplayName("Sécurité 1 : Les scrutins officiels refusent tout succès fictif sans SMTP configuré")
+    void testOfficialElectionWithoutSmtpRefusesFictitiousSuccess() {
+        // En l'absence de serveur SMTP réel configuré, le système refuse impérativement d'annoncer un succès
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                otpService.generateOtp(demoUser.getId(), officialElection.getId()));
 
-        // Vérification de la sérialisation JSON : la clé simulationCode doit être totalement absente du JSON
-        String json = objectMapper.writeValueAsString(challenge);
-        assertFalse(json.contains("\"simulationCode\""), "Le champ simulationCode ne doit jamais être sérialisé en mode EMAIL");
+        assertTrue(ex.getMessage().contains("SMTP"), "Le message d'erreur doit indiquer explicitement l'absence de SMTP");
+        // Aucun défi ne doit être créé ni aucun code fuité
+        assertTrue(otpRepository.findLatestActiveChallenge(demoUser.getId(), officialElection.getId()).isEmpty());
     }
 
     @Test
-    @DisplayName("Sécurité 2 : Les comptes officiels institutionnels ne reçoivent JAMAIS de simulationCode")
-    void testOfficialUserNeverReturnsSimulationCode() throws Exception {
-        // Même sur un scrutin de démonstration, un compte officiel ne reçoit jamais d'OTP en clair dans l'API
-        OtpChallengeResponseDto challenge = otpService.generateOtp(officialUser.getId(), demoElectionEnseignant.getId());
-        assertNotNull(challenge);
-        assertEquals("EMAIL", challenge.getMode());
-        assertNull(challenge.getSimulationCode(), "simulationCode doit être NULL pour un utilisateur institutionnel");
+    @DisplayName("Sécurité 2 : Les comptes officiels institutionnels refusent tout succès fictif sans SMTP")
+    void testOfficialUserWithoutSmtpRefusesFictitiousSuccess() {
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                otpService.generateOtp(officialUser.getId(), demoElectionEnseignant.getId()));
 
-        String json = objectMapper.writeValueAsString(challenge);
-        assertFalse(json.contains("\"simulationCode\""));
+        assertTrue(ex.getMessage().contains("SMTP"));
+        assertTrue(otpRepository.findLatestActiveChallenge(officialUser.getId(), demoElectionEnseignant.getId()).isEmpty());
     }
 
     @Test
@@ -193,20 +202,90 @@ public class OtpSecurityTests {
     }
 
     @Test
-    @DisplayName("Sécurité 4 : Hachage cryptographique SHA-256 dans la base de données")
-    void testOtpHashingSha256InDatabase() {
+    @DisplayName("Sécurité 4 : Hachage cryptographique HMAC-SHA-256 dans la base de données")
+    void testOtpHashingHmacSha256InDatabase() throws Exception {
         OtpChallengeResponseDto challenge = otpService.generateOtp(demoUser.getId(), demoElection.getId());
         String code = otpService.getTestAdapterCode(demoUser.getEmail(), demoElection.getId());
 
         OtpChallenge entity = otpRepository.findLatestActiveChallenge(demoUser.getId(), demoElection.getId()).orElseThrow();
         assertNotNull(entity.getCodeHache());
-        assertEquals(64, entity.getCodeHache().length(), "Le hash en base doit être une empreinte SHA-256 de 64 caractères hex");
-        assertNotEquals(code, entity.getCodeHache(), "Le code OTP en clair ne doit JAMAIS être stocké en base de données");
+        assertEquals(64, entity.getCodeHache().length(), "Le hash en base doit être une empreinte hex de 64 caractères");
+        assertNotEquals(code, entity.getCodeHache(), "Le code OTP en clair ne doit JAMAIS être stocké en base");
         assertFalse(entity.isConsomme());
+
+        // Vérifier que le hash correspond bien à HMAC-SHA256 avec la clé de test
+        String secret = "9f82c4e3b1a7d6e5f8a2c1b4e7d9c2a1b4e7d9c2a1b4e7d9c2a1b4e7d9c2a1b4";
+        Mac hmac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec keySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        hmac.init(keySpec);
+        byte[] expectedHash = hmac.doFinal(code.getBytes(StandardCharsets.UTF_8));
+        String expectedHex = HexFormat.of().formatHex(expectedHash);
+
+        assertEquals(expectedHex, entity.getCodeHache(), "Le hash doit correspondre à l'algorithme HMAC-SHA-256");
     }
 
     @Test
-    @DisplayName("Sécurité 5 : Rejet immédiat d'un OTP expiré après 5 minutes")
+    @DisplayName("Sécurité 4-bis : Rétrocompatibilité avec les défis existants hachés en legacy SHA-256")
+    void testLegacySha256BackwardCompatibility() throws Exception {
+        String legacyCode = "456789";
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(legacyCode.getBytes(StandardCharsets.UTF_8));
+        String legacyHex = HexFormat.of().formatHex(hash);
+
+        OtpChallenge legacyChallenge = new OtpChallenge();
+        legacyChallenge.setUser(demoUser);
+        legacyChallenge.setElection(demoElection);
+        legacyChallenge.setCodeHache(legacyHex);
+        legacyChallenge.setDateExpiration(OffsetDateTime.now().plusMinutes(5));
+        legacyChallenge.setTentativesRestantes(3);
+        legacyChallenge.setConsomme(false);
+        legacyChallenge.setDateCreation(OffsetDateTime.now());
+        otpRepository.save(legacyChallenge);
+
+        // La vérification doit accepter le hash legacy SHA-256 pour assurer une transition sans rupture
+        boolean verified = otpService.verifyOtp(demoUser.getId(), demoElection.getId(), legacyCode);
+        assertTrue(verified, "L'algorithme de transition doit valider les anciens défis hachés en SHA-256 standard");
+    }
+
+    @Test
+    @DisplayName("Sécurité 5 : Rate Limiting — Délai de recharge strict (Cooldown 10s) rejeté avec HTTP 429")
+    void testRateLimitCooldown() {
+        otpService.generateOtp(demoUser.getId(), demoElection.getId());
+
+        // Deuxième appel immédiat (avant écoulement des 10s de cooldown configurées dans application-test.yml)
+        RateLimitExceededException ex = assertThrows(RateLimitExceededException.class, () ->
+                otpService.generateOtp(demoUser.getId(), demoElection.getId()));
+
+        assertTrue(ex.getRetryAfterSeconds() > 0, "Retry-After doit être strictement positif");
+        assertTrue(ex.getMessage().toLowerCase().contains("veuillez patienter"));
+    }
+
+    @Test
+    @DisplayName("Sécurité 6 : Rate Limiting — Fenêtre glissante (Max 5 défis par fenêtre) rejetée avec HTTP 429")
+    void testRateLimitSlidingWindow() {
+        // Simuler 5 défis créés espacés de plus que le cooldown mais dans la fenêtre des 15 minutes
+        for (int i = 0; i < 5; i++) {
+            OtpChallenge c = new OtpChallenge();
+            c.setUser(demoUser);
+            c.setElection(demoElection);
+            c.setCodeHache("hash_" + i);
+            c.setDateExpiration(OffsetDateTime.now().plusMinutes(5));
+            c.setTentativesRestantes(3);
+            c.setConsomme(true);
+            // dateCreation antérieure au cooldown (ex: il y a 30s) mais dans la fenêtre (15 min)
+            c.setDateCreation(OffsetDateTime.now().minusSeconds(30 + i * 10));
+            otpRepository.save(c);
+        }
+
+        // Le 6ème appel doit lever RateLimitExceededException
+        RateLimitExceededException ex = assertThrows(RateLimitExceededException.class, () ->
+                otpService.generateOtp(demoUser.getId(), demoElection.getId()));
+
+        assertTrue(ex.getMessage().contains("Nombre maximal de demandes"));
+    }
+
+    @Test
+    @DisplayName("Sécurité 7 : Rejet immédiat d'un OTP expiré après 5 minutes")
     void testExpiredOtpRejection() {
         otpService.generateOtp(demoUser.getId(), demoElection.getId());
         String code = otpService.getTestAdapterCode(demoUser.getEmail(), demoElection.getId());
@@ -223,7 +302,7 @@ public class OtpSecurityTests {
     }
 
     @Test
-    @DisplayName("Sécurité 6 : Rejet strict d'un code OTP déjà consommé (Usage unique)")
+    @DisplayName("Sécurité 8 : Rejet strict d'un code OTP déjà consommé (Usage unique)")
     void testReusedOtpRejection() {
         otpService.generateOtp(demoUser.getId(), demoElection.getId());
         String code = otpService.getTestAdapterCode(demoUser.getEmail(), demoElection.getId());
@@ -237,7 +316,7 @@ public class OtpSecurityTests {
     }
 
     @Test
-    @DisplayName("Sécurité 7 : Blocage strict après 3 tentatives erronées (Anti-bruteforce)")
+    @DisplayName("Sécurité 9 : Blocage strict après 3 tentatives erronées (Anti-bruteforce)")
     void testAttemptThrottling() {
         otpService.generateOtp(demoUser.getId(), demoElection.getId());
 
@@ -252,5 +331,30 @@ public class OtpSecurityTests {
                 otpService.verifyOtp(demoUser.getId(), demoElection.getId(), rightCode));
 
         assertTrue(ex.getMessage().contains("maximal") || ex.getMessage().contains("Aucun défi") || ex.getMessage().contains("bloqu"));
+    }
+
+    @Test
+    @DisplayName("Sécurité 10 : Isolation transactionnelle REQUIRES_NEW — Décrément persistant même si la transaction appelante roll back")
+    void testFailedAttemptPersistedEvenIfOuterTransactionRollsBack() {
+        otpService.generateOtp(demoUser.getId(), demoElection.getId());
+
+        // Simuler une transaction appelante (comme VotingService.requestVoteAuthorization) qui échoue et rollback
+        DefaultTransactionDefinition def = new DefaultTransactionDefinition();
+        TransactionStatus status = transactionManager.getTransaction(def);
+
+        try {
+            // Tentative erronée dans l'OTP
+            otpService.verifyOtp(demoUser.getId(), demoElection.getId(), "999999");
+        } catch (VoteException ignored) {
+            // attendu
+        } finally {
+            // Rollback explicite de la transaction appelante englobante
+            transactionManager.rollback(status);
+        }
+
+        // Grâce à REQUIRES_NEW, la décrémentation des tentatives dans OtpService a été commitée dans sa propre transaction
+        OtpChallenge challengeAfterRollback = otpRepository.findLatestActiveChallenge(demoUser.getId(), demoElection.getId()).orElseThrow();
+        assertEquals(2, challengeAfterRollback.getTentativesRestantes(),
+                "Le compteur de tentatives restantes DOIT avoir été décrémenté à 2 malgré le rollback de la transaction appelante");
     }
 }

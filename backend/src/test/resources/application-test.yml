@@ -26,6 +26,9 @@ app:
     expiration-seconds: 300
     max-attempts: 3
     cooldown-seconds: 10
+    max-challenges-window: 5
+    window-minutes: 15
+    hmac-secret: 9f82c4e3b1a7d6e5f8a2c1b4e7d9c2a1b4e7d9c2a1b4e7d9c2a1b4e7d9c2a1b4
     provider: mock
   security:
     initial-admin:

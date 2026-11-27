@@ -11,6 +11,20 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 25MB
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 server:
   port: ${PORT:${SERVER_PORT:8080}}
@@ -29,8 +43,11 @@ app:
   otp:
     expiration-seconds: ${OTP_EXPIRATION_SECONDS:300}   # 5 minutes
     max-attempts: ${OTP_MAX_ATTEMPTS:3}
-    cooldown-seconds: 60
+    cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
+    max-challenges-window: ${OTP_MAX_CHALLENGES_WINDOW:5}
+    window-minutes: ${OTP_WINDOW_MINUTES:15}
     provider: ${OTP_PROVIDER:mock}
+    hmac-secret: ${OTP_HMAC_SECRET:VoteUaszOtpSecretHmacKey2026DefaultPepperKeyForAuditPreSoutenance}
   security:
     initial-admin:
       email: ${INITIAL_ADMIN_EMAIL:admin.electoral@uasz.sn}

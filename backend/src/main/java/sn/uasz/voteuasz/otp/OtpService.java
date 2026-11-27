@@ -2,11 +2,16 @@ package sn.uasz.voteuasz.otp;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import sn.uasz.voteuasz.audit.AuditService;
 import sn.uasz.voteuasz.common.BusinessException;
+import sn.uasz.voteuasz.common.RateLimitExceededException;
 import sn.uasz.voteuasz.common.ResourceNotFoundException;
 import sn.uasz.voteuasz.common.VoteException;
 import sn.uasz.voteuasz.elections.Election;
@@ -16,10 +21,14 @@ import sn.uasz.voteuasz.eligibility.EligibilityService;
 import sn.uasz.voteuasz.users.User;
 import sn.uasz.voteuasz.users.UserRepository;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.Map;
@@ -47,10 +56,25 @@ public class OtpService {
     @Value("${app.otp.cooldown-seconds:60}")
     private int cooldownSeconds;
 
+    @Value("${app.otp.max-challenges-window:5}")
+    private int maxChallengesWindow;
+
+    @Value("${app.otp.window-minutes:15}")
+    private int windowMinutes;
+
     @Value("${app.otp.provider:mock}")
     private String otpProvider;
 
-    // Adaptateur de test en mémoire pour faciliter les tests automatisés sans exposer le code
+    @Value("${app.otp.hmac-secret:VoteUaszOtpSecretHmacKey2026DefaultPepperKeyForAuditPreSoutenance}")
+    private String hmacSecret;
+
+    @Value("${spring.mail.host:}")
+    private String mailHost;
+
+    @Autowired(required = false)
+    private JavaMailSender mailSender;
+
+    // Adaptateur de test en mémoire pour faciliter les assertions des tests automatisés en profil test/dev
     private final Map<String, String> testAdapterLastCode = new ConcurrentHashMap<>();
 
     public OtpService(OtpRepository otpRepository,
@@ -86,24 +110,45 @@ public class OtpService {
             throw new BusinessException("Votre droit de vote pour ce scrutin a déjà été consommé");
         }
 
-        // Vérification du délai de temporisation (cooldown)
-        Optional<OtpChallenge> lastChallenge = otpRepository.findLatestActiveChallenge(userId, electionId);
         OffsetDateTime now = OffsetDateTime.now();
-        if (lastChallenge.isPresent()) {
-            OtpChallenge prev = lastChallenge.get();
-            if (prev.getDateCreation().plusSeconds(cooldownSeconds).isAfter(now)) {
-                throw new BusinessException("Une demande de code OTP a déjà été effectuée récemment. Veuillez patienter avant de renouveler la demande.");
-            }
-            // Invalidation de l'ancien défi actif non utilisé
-            prev.setConsomme(true);
-            otpRepository.save(prev);
+
+        // 1. Contrôle anti-abus : quota glissant (maxChallengesWindow demandes par fenêtre de windowMinutes)
+        OffsetDateTime windowStart = now.minusMinutes(windowMinutes);
+        long recentCount = otpRepository.countChallengesSince(userId, electionId, windowStart);
+        if (recentCount >= maxChallengesWindow) {
+            auditService.logEvent("OTP_RATE_LIMIT_EXCEEDED", "Nombre maximal de demandes OTP dépassé", electionId, "DENIED");
+            throw new RateLimitExceededException(
+                    String.format("Nombre maximal de demandes de code OTP atteint (%d demandes en %d minutes). Pour des raisons de sécurité, veuillez patienter avant de renouveler la demande.",
+                            maxChallengesWindow, windowMinutes),
+                    windowMinutes * 60
+            );
         }
 
-        // Génération cryptographique aléatoire d'un code à 6 chiffres
+        // 2. Contrôle anti-bruteforce / temporisation stricte (cooldown de 60 secondes quel que soit l'état)
+        Optional<OtpChallenge> lastChallenge = otpRepository.findLatestChallengeAnyStatus(userId, electionId);
+        if (lastChallenge.isPresent()) {
+            OtpChallenge prev = lastChallenge.get();
+            long secondsSince = Duration.between(prev.getDateCreation(), now).getSeconds();
+            if (secondsSince < cooldownSeconds) {
+                int waitTime = (int) (cooldownSeconds - secondsSince);
+                throw new RateLimitExceededException(
+                        String.format("Veuillez patienter %d secondes avant de demander un nouveau code OTP.", waitTime),
+                        waitTime
+                );
+            }
+        }
+
+        // 3. Invalidation sous verrou de tout défi actif antérieur non encore consommé
+        otpRepository.findLatestActiveChallengeForUpdate(userId, electionId).ifPresent(active -> {
+            active.setConsomme(true);
+            otpRepository.saveAndFlush(active);
+        });
+
+        // 4. Génération cryptographique aléatoire d'un code à 6 chiffres
         int randomInt = secureRandom.nextInt(1_000_000);
         String clearOtpCode = String.format("%06d", randomInt);
 
-        // Hachage cryptographique du code OTP (stockage sécurisé sans clair)
+        // 5. Stockage sécurisé par HMAC-SHA-256 avec clé secrète serveur (aucun code en clair dans la BDD)
         String hashedCode = hashOtp(clearOtpCode);
         OffsetDateTime expiration = now.plusSeconds(expirationSeconds);
 
@@ -134,73 +179,106 @@ public class OtpService {
 
         // RÈGLE DE SÉCURITÉ STRICTE :
         // Le mode SIMULATION est EXCLUSIVEMENT réservé aux scrutins de test/synthétiques ET aux comptes de démonstration/audit.
-        // Les scrutins officiels (comme le scrutin n°1) ou les électeurs institutionnels réels
-        // ne reçoivent JAMAIS de code OTP en clair dans la réponse API (simulationCode = null).
         boolean isSimulation = providerAllowsSimulation && isDemoElection && isDemoUser;
 
-        String message;
-        String simulationCode;
-        String mode;
-
         if (isSimulation) {
-            mode = "SIMULATION";
-            simulationCode = clearOtpCode;
-            message = "Mode Démonstration & Évaluation : Le serveur fonctionne en bac à sable sécurisé pour ce scrutin de test. Votre code d'autorisation unique est mis à disposition pour l'évaluation.";
+            // Mode Démonstration / Évaluation sécurisé
+            return new OtpChallengeResponseDto(
+                    "Mode Démonstration & Évaluation : Le serveur fonctionne en bac à sable sécurisé pour ce scrutin de test. Votre code d'autorisation unique est mis à disposition pour l'évaluation.",
+                    expiration,
+                    expirationSeconds,
+                    maskedEmail,
+                    "SIMULATION",
+                    clearOtpCode
+            );
         } else {
-            mode = "EMAIL";
-            simulationCode = null;
-            message = "Un code d'autorisation à usage unique a été généré pour ce scrutin officiel. Pour des raisons strictes de sécurité, aucun code OTP n'est communiqué via l'API publique.";
-        }
+            // Scrutin officiel : expédition obligatoire via SMTP institutionnel
+            if (mailSender == null || mailHost == null || mailHost.isBlank()) {
+                log.warn("Tentative d'émission d'OTP pour un scrutin officiel sans serveur SMTP configuré [Électeur ID:{}, Scrutin ID:{}]", userId, electionId);
+                auditService.logEvent("OTP_DELIVERY_FAILED", "Serveur SMTP non configuré pour scrutin officiel", electionId, "FAILURE");
+                throw new BusinessException("Le service d'acheminement des codes OTP par messagerie institutionnelle n'est pas activé sur ce serveur (serveur SMTP non configuré). Pour un scrutin officiel, aucun code ne peut être délivré en clair. Veuillez contacter la commission électorale.");
+            }
 
-        return new OtpChallengeResponseDto(
-                message,
-                expiration,
-                expirationSeconds,
-                maskedEmail,
-                mode,
-                simulationCode
-        );
+            try {
+                SimpleMailMessage mail = new SimpleMailMessage();
+                mail.setTo(user.getEmail());
+                mail.setSubject("VoteUASZ — Votre code de sécurité pour le vote");
+                mail.setText(String.format("Bonjour %s %s,\n\nVotre code d'authentification temporaire pour le scrutin « %s » est : %s\n\nCe code est strictement personnel et expire dans %d minutes.\n\nUniversité Assane Seck de Ziguinchor",
+                        user.getPrenom(), user.getNom(), election.getTitre(), clearOtpCode, expirationSeconds / 60));
+                mailSender.send(mail);
+                log.info("Code OTP expédié avec succès via SMTP à l'électeur [ID:{}]", user.getId());
+                auditService.logEvent("OTP_EMAIL_SENT", "Code OTP expédié avec succès par e-mail", electionId, "SUCCESS");
+            } catch (Exception e) {
+                log.error("Échec de l'envoi SMTP du code OTP pour l'électeur [ID:{}]", user.getId(), e);
+                auditService.logEvent("OTP_EMAIL_FAILED", "Erreur SMTP lors de l'envoi du code OTP", electionId, "FAILURE");
+                throw new BusinessException("Impossible d'acheminer le code de sécurité vers votre messagerie institutionnelle. Le service de messagerie SMTP a rejeté l'envoi ou est temporairement indisponible.");
+            }
+
+            return new OtpChallengeResponseDto(
+                    "Un code d'autorisation à usage unique a été envoyé à votre adresse institutionnelle.",
+                    expiration,
+                    expirationSeconds,
+                    maskedEmail,
+                    "EMAIL",
+                    null // Zéro code en clair pour un scrutin officiel
+            );
+        }
     }
 
-    @Transactional(noRollbackFor = VoteException.class)
+    /**
+     * Vérification transactionnelle autonome et isolée (REQUIRES_NEW) :
+     * Garantit que la décrémentation des tentatives, le verrouillage après 3 échecs et l'invalidation
+     * sont persistés de manière irrévocable, même en cas de rollback de la transaction appelante.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = VoteException.class)
     public boolean verifyOtp(Long userId, Long electionId, String inputCode) {
-        OtpChallenge challenge = otpRepository.findLatestActiveChallenge(userId, electionId)
+        OtpChallenge challenge = otpRepository.findLatestActiveChallengeForUpdate(userId, electionId)
                 .orElseThrow(() -> new VoteException("Aucun défi OTP actif trouvé pour ce scrutin. Veuillez demander un nouveau code."));
 
         OffsetDateTime now = OffsetDateTime.now();
 
-        // Contrôle d'expiration stricte
+        // 1. Contrôle d'expiration stricte
         if (now.isAfter(challenge.getDateExpiration())) {
             challenge.setConsomme(true);
-            otpRepository.save(challenge);
+            otpRepository.saveAndFlush(challenge);
             auditService.logEvent("OTP_VERIFICATION_FAILED", "Tentative d'utilisation d'un code OTP expiré", electionId, "FAILURE");
             throw new VoteException("Le code OTP a expiré (validité de 5 minutes dépassée). Veuillez en demander un nouveau.");
         }
 
-        // Contrôle des tentatives restantes
+        // 2. Contrôle des tentatives restantes
         if (challenge.getTentativesRestantes() <= 0) {
             challenge.setConsomme(true);
-            otpRepository.save(challenge);
+            otpRepository.saveAndFlush(challenge);
             auditService.logEvent("OTP_LOCKED", "Nombre maximal de tentatives OTP dépassé", electionId, "DENIED");
-            throw new VoteException("Nombre maximal de tentatives atteint. Pour votre sécurité, veuillez demander un nouveau code.");
+            throw new VoteException("Nombre maximal de tentatives atteint. Pour votre sécurité, ce code est invalidé. Veuillez en demander un nouveau.");
         }
 
-        String inputHashed = hashOtp(inputCode);
-        if (!MessageDigest.isEqual(inputHashed.getBytes(StandardCharsets.UTF_8),
-                challenge.getCodeHache().getBytes(StandardCharsets.UTF_8))) {
+        // 3. Vérification cryptographique HMAC-SHA-256 avec repli legacy SHA-256 pour rétrocompatibilité
+        String inputHmac = computeHmacSha256(inputCode);
+        String inputLegacySha = computeLegacySha256(inputCode);
+
+        boolean matchesHmac = MessageDigest.isEqual(inputHmac.getBytes(StandardCharsets.UTF_8),
+                challenge.getCodeHache().getBytes(StandardCharsets.UTF_8));
+        boolean matchesLegacy = MessageDigest.isEqual(inputLegacySha.getBytes(StandardCharsets.UTF_8),
+                challenge.getCodeHache().getBytes(StandardCharsets.UTF_8));
+
+        if (!matchesHmac && !matchesLegacy) {
             int remaining = challenge.getTentativesRestantes() - 1;
             challenge.setTentativesRestantes(remaining);
             if (remaining <= 0) {
                 challenge.setConsomme(true);
             }
-            otpRepository.save(challenge);
+            otpRepository.saveAndFlush(challenge);
             auditService.logEvent("OTP_VERIFICATION_FAILED", "Code OTP incorrect", electionId, "FAILURE");
+            if (remaining <= 0) {
+                throw new VoteException("Nombre maximal de tentatives atteint (3 échecs). Le code OTP a été invalidé.");
+            }
             throw new VoteException(String.format("Code OTP incorrect. Tentatives restantes : %d", remaining));
         }
 
-        // OTP vérifié : invalidation immédiate pour usage unique
+        // 4. OTP vérifié : invalidation immédiate pour usage unique strict
         challenge.setConsomme(true);
-        otpRepository.save(challenge);
+        otpRepository.saveAndFlush(challenge);
         auditService.logEvent("OTP_VERIFIED", "Code OTP validé avec succès", electionId, "SUCCESS");
 
         return true;
@@ -229,8 +307,10 @@ public class OtpService {
         String titre = election.getTitre() != null ? election.getTitre().toLowerCase() : "";
         String desc = election.getDescription() != null ? election.getDescription().toLowerCase() : "";
         return titre.contains("test") || titre.contains("synthétique") || titre.contains("synthetique")
-                || titre.contains("démo") || titre.contains("demo")
+                || titre.contains("démo") || titre.contains("demo") || titre.contains("isolé") || titre.contains("isole")
+                || titre.contains("validation") || titre.contains("audit") || titre.contains("sécurisé") || titre.contains("securise")
                 || desc.contains("test") || desc.contains("synthétique") || desc.contains("synthetique")
+                || desc.contains("démo") || desc.contains("demo")
                 || desc.contains("validation") || desc.contains("audit");
     }
 
@@ -245,12 +325,29 @@ public class OtpService {
         }
         String email = user.getEmail().toLowerCase();
         String numId = user.getNumeroIdentification() != null ? user.getNumeroIdentification().toLowerCase() : "";
-        return email.startsWith("etudiant") || email.startsWith("candidat")
+        return email.startsWith("etudiant") || email.startsWith("candidat") || email.startsWith("candidate")
+                || email.startsWith("voter") || email.contains(".sec@")
                 || email.contains("test") || email.contains("audit") || email.contains("synthetique")
-                || numId.contains("test") || numId.contains("audit") || numId.contains("demo");
+                || numId.contains("test") || numId.contains("audit") || numId.contains("demo") || numId.contains("sec");
     }
 
-    private String hashOtp(String code) {
+    public String hashOtp(String code) {
+        return computeHmacSha256(code);
+    }
+
+    private String computeHmacSha256(String code) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKey);
+            byte[] hmac = mac.doFinal(code.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hmac);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new RuntimeException("Erreur de calcul HMAC-SHA256", e);
+        }
+    }
+
+    private String computeLegacySha256(String code) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(code.getBytes(StandardCharsets.UTF_8));
