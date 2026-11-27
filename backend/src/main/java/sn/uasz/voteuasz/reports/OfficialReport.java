@@ -64,10 +64,6 @@ public class OfficialReport {
         return election;
     }
 
-    public Long getElectionId() {
-        return election != null ? election.getId() : null;
-    }
-
     public void setElection(Election election) {
         this.election = election;
     }
