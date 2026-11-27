@@ -57,12 +57,12 @@ public class EligibilityService {
         return dto;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<EligibilityDto> findEligibleElectionsForUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Électeur introuvable"));
 
-        List<Election> activeElections = electionRepository.findActiveElections();
+        List<Election> activeElections = electionRepository.findActiveElectionsWithDetails();
         List<EligibilityDto> result = new ArrayList<>();
 
         for (Election election : activeElections) {

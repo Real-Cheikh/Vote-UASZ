@@ -80,15 +80,15 @@ import { AuditEvent, Candidacy, College, Complaint, Election, ElectionResult } f
                     </div>
                     <select class="form-control" [(ngModel)]="newElection.collegeId" name="collegeId" required [disabled]="loadingColleges">
                       @if (loadingColleges) {
-                        <option [value]="null" disabled selected>Chargement des collèges électoraux...</option>
+                        <option [ngValue]="null" disabled selected>Chargement des collèges électoraux...</option>
                       } @else if (errorColleges) {
-                        <option [value]="null" disabled selected>Erreur de chargement des collèges</option>
+                        <option [ngValue]="null" disabled selected>Erreur de chargement des collèges</option>
                       } @else if (colleges.length === 0) {
-                        <option [value]="null" disabled selected>Aucun collège électoral disponible</option>
+                        <option [ngValue]="null" disabled selected>Aucun collège électoral disponible</option>
                       } @else {
-                        <option [value]="null" disabled>-- Sélectionner le collège électoral --</option>
+                        <option [ngValue]="null" disabled>-- Sélectionner le collège électoral --</option>
                         @for (c of colleges; track c.id) {
-                          <option [value]="c.id">{{ c.nom }} — [{{ c.categorie }}] ({{ c.ufr || 'Toutes UFR' }})</option>
+                          <option [ngValue]="c.id">{{ c.nom }} — [{{ c.categorie }}] ({{ c.ufr || 'Toutes UFR' }})</option>
                         }
                       }
                     </select>
@@ -492,8 +492,19 @@ export class AdminComponent implements OnInit {
 
   toggleCreateModal(): void {
     this.showCreateModal = !this.showCreateModal;
-    if (this.showCreateModal && this.colleges.length === 0) {
-      this.loadColleges();
+    if (this.showCreateModal) {
+      if (this.colleges.length === 0) {
+        this.loadColleges();
+      } else if (!this.newElection.collegeId) {
+        this.newElection.collegeId = this.colleges[0].id;
+      }
+      // Pré-remplir les dates par défaut si vides (ouverture maintenant, clôture dans 7 jours)
+      if (!this.newElection.dateOuverture) {
+        const now = new Date();
+        const nextWeek = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
+        this.newElection.dateOuverture = now.toISOString().slice(0, 16);
+        this.newElection.dateCloture = nextWeek.toISOString().slice(0, 16);
+      }
     }
   }
 
@@ -580,7 +591,8 @@ export class AdminComponent implements OnInit {
       alert('Veuillez saisir un titre pour le scrutin.');
       return;
     }
-    if (!this.newElection.collegeId) {
+    const collegeId = Number(this.newElection.collegeId);
+    if (!collegeId || isNaN(collegeId)) {
       alert('Veuillez sélectionner un collège électoral valide.');
       return;
     }
@@ -589,10 +601,23 @@ export class AdminComponent implements OnInit {
       return;
     }
 
+    const dO = new Date(this.newElection.dateOuverture);
+    const dC = new Date(this.newElection.dateCloture);
+    if (isNaN(dO.getTime()) || isNaN(dC.getTime())) {
+      alert("Les dates sélectionnées ne sont pas valides.");
+      return;
+    }
+    if (dC <= dO) {
+      alert("La date de clôture doit être strictement postérieure à la date d'ouverture du scrutin.");
+      return;
+    }
+
     const payload = {
       ...this.newElection,
-      dateOuverture: new Date(this.newElection.dateOuverture).toISOString(),
-      dateCloture: new Date(this.newElection.dateCloture).toISOString()
+      titre: this.newElection.titre.trim(),
+      collegeId: collegeId,
+      dateOuverture: dO.toISOString(),
+      dateCloture: dC.toISOString()
     };
 
     this.apiService.createElection(payload).subscribe({
@@ -612,7 +637,12 @@ export class AdminComponent implements OnInit {
         this.loadElections();
       },
       error: (err) => {
-        alert(err.error?.message || "Erreur lors de la création de l'élection.");
+        let msg = err.error?.message || "Erreur lors de la création de l'élection.";
+        if (err.error?.validationErrors) {
+          const details = Object.values(err.error.validationErrors).join(' | ');
+          msg += ` (${details})`;
+        }
+        alert(msg);
       }
     });
   }

@@ -26,7 +26,7 @@ export class AuthService {
   public isSuperAdmin = computed(() => this.hasRole('ROLE_SUPER_ADMIN_ELECTORAL'));
   public isCommission = computed(() => this.hasRole('ROLE_COMMISSION_ELECTORALE') || this.isSuperAdmin());
   public isCandidat = computed(() => this.hasRole('ROLE_CANDIDAT'));
-  public isElecteur = computed(() => this.hasRole('ROLE_ELECTEUR'));
+  public isElecteur = computed(() => this.hasRole('ROLE_ELECTEUR') || this.hasRole('ROLE_CANDIDAT'));
 
   constructor(private http: HttpClient) {}
 

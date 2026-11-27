@@ -76,6 +76,13 @@ public class UserService {
                         .orElseThrow(() -> new ResourceNotFoundException("Rôle introuvable : " + roleNameStr));
                 roles.add(role);
             }
+            // Règle métier : tout candidat conserve impérativement son droit de vote électoral (ROLE_ELECTEUR)
+            if (roles.stream().anyMatch(r -> r.getName() == RoleName.ROLE_CANDIDAT) &&
+                roles.stream().noneMatch(r -> r.getName() == RoleName.ROLE_ELECTEUR)) {
+                Role electeurRole = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
+                        .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_ELECTEUR, "Électeur universitaire")));
+                roles.add(electeurRole);
+            }
         } else {
             // Rôle par défaut : Électeur
             Role defaultRole = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
@@ -99,6 +106,14 @@ public class UserService {
             Role role = roleRepository.findByName(roleName)
                     .orElseThrow(() -> new ResourceNotFoundException("Rôle introuvable : " + roleStr));
             updatedRoles.add(role);
+        }
+
+        // Règle métier : tout candidat conserve impérativement son droit de vote électoral (ROLE_ELECTEUR)
+        if (updatedRoles.stream().anyMatch(r -> r.getName() == RoleName.ROLE_CANDIDAT) &&
+            updatedRoles.stream().noneMatch(r -> r.getName() == RoleName.ROLE_ELECTEUR)) {
+            Role electeurRole = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
+                    .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_ELECTEUR, "Électeur universitaire")));
+            updatedRoles.add(electeurRole);
         }
 
         user.setRoles(updatedRoles);

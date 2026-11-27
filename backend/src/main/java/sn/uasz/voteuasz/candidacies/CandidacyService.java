@@ -60,7 +60,7 @@ public class CandidacyService {
 
     @Transactional(readOnly = true)
     public List<CandidacyDto> findAllPublicCandidates() {
-        return candidacyRepository.findAll().stream()
+        return candidacyRepository.findAllWithDetails().stream()
                 .filter(c -> c.getStatut() != CandidacyStatus.REJECTED && c.getStatut() != CandidacyStatus.WITHDRAWN)
                 .map(CandidacyDto::fromEntityPublic)
                 .collect(Collectors.toList());
@@ -75,7 +75,7 @@ public class CandidacyService {
 
     @Transactional(readOnly = true)
     public CandidacyDto findById(Long id) {
-        Candidacy candidacy = candidacyRepository.findById(id)
+        Candidacy candidacy = candidacyRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidature introuvable avec l'id : " + id));
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -177,11 +177,21 @@ public class CandidacyService {
         candidacy.setStatut(CandidacyStatus.SUBMITTED);
         candidacy.setDateSoumission(OffsetDateTime.now());
 
-        // Attribuer le rôle CANDIDAT si non présent
+        // Attribuer le rôle CANDIDAT si non présent, tout en maintenant impérativement le rôle ELECTEUR
         Role candidateRole = roleRepository.findByName(RoleName.ROLE_CANDIDAT)
                 .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_CANDIDAT, "Candidat aux scrutins")));
+        Role electeurRole = roleRepository.findByName(RoleName.ROLE_ELECTEUR)
+                .orElseGet(() -> roleRepository.save(new Role(RoleName.ROLE_ELECTEUR, "Électeur universitaire")));
+        boolean modified = false;
         if (!currentUser.getRoles().contains(candidateRole)) {
             currentUser.addRole(candidateRole);
+            modified = true;
+        }
+        if (!currentUser.getRoles().contains(electeurRole)) {
+            currentUser.addRole(electeurRole);
+            modified = true;
+        }
+        if (modified) {
             userRepository.save(currentUser);
         }
 

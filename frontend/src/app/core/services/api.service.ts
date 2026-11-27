@@ -30,6 +30,10 @@ export class ApiService {
   private publicElectionsCacheTime = 0;
   private readonly CACHE_TTL_MS = 30000; // 30 secondes de cache en mémoire
 
+  private collegesCache$: Observable<ApiResponse<College[]>> | null = null;
+  private collegesCacheTime = 0;
+  private readonly COLLEGES_CACHE_TTL_MS = 60000; // 60 secondes de cache pour les collèges
+
   constructor(private http: HttpClient) {}
 
   // --- Élections ---
@@ -77,8 +81,16 @@ export class ApiService {
   }
 
   // --- Collèges Électoraux ---
-  getColleges(): Observable<ApiResponse<College[]>> {
-    return this.http.get<ApiResponse<College[]>>(`${this.baseUrl}/colleges`);
+  getColleges(forceReload: boolean = false): Observable<ApiResponse<College[]>> {
+    const now = Date.now();
+    if (!forceReload && this.collegesCache$ && (now - this.collegesCacheTime < this.COLLEGES_CACHE_TTL_MS)) {
+      return this.collegesCache$;
+    }
+    this.collegesCacheTime = now;
+    this.collegesCache$ = this.http.get<ApiResponse<College[]>>(`${this.baseUrl}/colleges`).pipe(
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+    return this.collegesCache$;
   }
 
   // --- Candidatures ---
