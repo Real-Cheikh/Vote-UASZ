@@ -1,7 +1,9 @@
 package sn.uasz.voteuasz.otp;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class OtpChallengeResponseDto {
 
     private String message;

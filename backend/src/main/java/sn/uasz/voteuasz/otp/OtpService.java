@@ -127,12 +127,30 @@ public class OtpService {
         auditService.logEvent("OTP_CHALLENGE_ISSUED", "Demande de code OTP pour vote", electionId, "SUCCESS");
 
         String maskedEmail = maskEmail(user.getEmail());
-        boolean isSimulation = "mock".equalsIgnoreCase(otpProvider) || "simulation".equalsIgnoreCase(otpProvider);
-        String message = isSimulation
-                ? "Mode Démonstration & Évaluation : Le serveur fonctionne en bac à sable sécurisé (aucun serveur SMTP externe n'est configuré pour le domaine @zig.univ.sn). Votre code d'autorisation unique est mis à disposition pour l'évaluation."
-                : "Un code d'autorisation à usage unique a été envoyé à votre adresse institutionnelle.";
-        String simulationCode = isSimulation ? clearOtpCode : null;
-        String mode = isSimulation ? "SIMULATION" : "EMAIL";
+
+        boolean providerAllowsSimulation = "mock".equalsIgnoreCase(otpProvider) || "simulation".equalsIgnoreCase(otpProvider);
+        boolean isDemoElection = isDemonstrationElection(election);
+        boolean isDemoUser = isDemonstrationUser(user);
+
+        // RÈGLE DE SÉCURITÉ STRICTE :
+        // Le mode SIMULATION est EXCLUSIVEMENT réservé aux scrutins de test/synthétiques ET aux comptes de démonstration/audit.
+        // Les scrutins officiels (comme le scrutin n°1) ou les électeurs institutionnels réels
+        // ne reçoivent JAMAIS de code OTP en clair dans la réponse API (simulationCode = null).
+        boolean isSimulation = providerAllowsSimulation && isDemoElection && isDemoUser;
+
+        String message;
+        String simulationCode;
+        String mode;
+
+        if (isSimulation) {
+            mode = "SIMULATION";
+            simulationCode = clearOtpCode;
+            message = "Mode Démonstration & Évaluation : Le serveur fonctionne en bac à sable sécurisé pour ce scrutin de test. Votre code d'autorisation unique est mis à disposition pour l'évaluation.";
+        } else {
+            mode = "EMAIL";
+            simulationCode = null;
+            message = "Un code d'autorisation à usage unique a été généré pour ce scrutin officiel. Pour des raisons strictes de sécurité, aucun code OTP n'est communiqué via l'API publique.";
+        }
 
         return new OtpChallengeResponseDto(
                 message,
@@ -193,6 +211,43 @@ public class OtpService {
      */
     public String getTestAdapterCode(String email, Long electionId) {
         return testAdapterLastCode.get(email + ":" + electionId);
+    }
+
+    /**
+     * Contrôle de sécurité strict : vérifie si un scrutin est qualifié pour le bac à sable de test/démonstration.
+     * Le scrutin officiel n°1 ou tout scrutin officiel sans mention explicite de test/synthétique
+     * est catégoriquement exclu du mode simulation.
+     */
+    public boolean isDemonstrationElection(Election election) {
+        if (election == null || election.getId() == null) {
+            return false;
+        }
+        // Le scrutin officiel n°1 est le scrutin officiel de production protégé de manière absolue
+        if (Long.valueOf(1L).equals(election.getId())) {
+            return false;
+        }
+        String titre = election.getTitre() != null ? election.getTitre().toLowerCase() : "";
+        String desc = election.getDescription() != null ? election.getDescription().toLowerCase() : "";
+        return titre.contains("test") || titre.contains("synthétique") || titre.contains("synthetique")
+                || titre.contains("démo") || titre.contains("demo")
+                || desc.contains("test") || desc.contains("synthétique") || desc.contains("synthetique")
+                || desc.contains("validation") || desc.contains("audit");
+    }
+
+    /**
+     * Contrôle de sécurité strict : vérifie si un utilisateur est un compte de test/démonstration.
+     * Les comptes institutionnels réels, les administrateurs officiels et les électeurs réels
+     * ne reçoivent jamais de code OTP dans les réponses API.
+     */
+    public boolean isDemonstrationUser(User user) {
+        if (user == null || user.getEmail() == null) {
+            return false;
+        }
+        String email = user.getEmail().toLowerCase();
+        String numId = user.getNumeroIdentification() != null ? user.getNumeroIdentification().toLowerCase() : "";
+        return email.startsWith("etudiant") || email.startsWith("candidat")
+                || email.contains("test") || email.contains("audit") || email.contains("synthetique")
+                || numId.contains("test") || numId.contains("audit") || numId.contains("demo");
     }
 
     private String hashOtp(String code) {
