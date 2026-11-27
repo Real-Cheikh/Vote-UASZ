@@ -5,9 +5,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import sn.uasz.voteuasz.common.ApiResponse;
+import sn.uasz.voteuasz.common.BusinessException;
+import sn.uasz.voteuasz.security.UserPrincipal;
 import sn.uasz.voteuasz.users.UserDto;
+import sn.uasz.voteuasz.users.UserService;
 
 @RestController
 @RequestMapping("/auth")
@@ -15,9 +20,11 @@ import sn.uasz.voteuasz.users.UserDto;
 public class AuthController {
 
     private final AuthService authService;
+    private final UserService userService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, UserService userService) {
         this.authService = authService;
+        this.userService = userService;
     }
 
     @PostMapping("/register")
@@ -53,5 +60,21 @@ public class AuthController {
     @Operation(summary = "Déconnexion de la session")
     public ResponseEntity<ApiResponse<String>> logout() {
         return ResponseEntity.ok(ApiResponse.ok("Déconnexion effectuée avec succès", null));
+    }
+
+    @PostMapping("/change-password")
+    @Operation(summary = "Renouvellement du mot de passe (obligatoire au premier login ou sur demande)")
+    public ResponseEntity<ApiResponse<String>> changePassword(@Valid @RequestBody ChangePasswordDto dto) {
+        Long userId = getCurrentUserId();
+        userService.changePassword(userId, dto);
+        return ResponseEntity.ok(ApiResponse.ok("Mot de passe mis à jour avec succès", "Mot de passe modifié"));
+    }
+
+    private Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal.getId();
+        }
+        throw new BusinessException("Session non authentifiée");
     }
 }

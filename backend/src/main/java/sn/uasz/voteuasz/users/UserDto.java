@@ -19,6 +19,7 @@ public class UserDto {
     private UserCategory categorie;
     private boolean actif;
     private boolean bloque;
+    private boolean doitChangerMotDePasse;
     private LocalDateTime dateCreation;
     private LocalDateTime derniereConnexion;
     private Set<String> roles;
@@ -37,6 +38,7 @@ public class UserDto {
         dto.setCategorie(user.getCategorie());
         dto.setActif(user.isActif());
         dto.setBloque(user.isBloque());
+        dto.setDoitChangerMotDePasse(user.isDoitChangerMotDePasse());
         dto.setDateCreation(user.getDateCreation());
         dto.setDerniereConnexion(user.getDerniereConnexion());
         if (user.getRoles() != null) {
@@ -117,6 +119,14 @@ public class UserDto {
 
     public void setBloque(boolean bloque) {
         this.bloque = bloque;
+    }
+
+    public boolean isDoitChangerMotDePasse() {
+        return doitChangerMotDePasse;
+    }
+
+    public void setDoitChangerMotDePasse(boolean doitChangerMotDePasse) {
+        this.doitChangerMotDePasse = doitChangerMotDePasse;
     }
 
     public LocalDateTime getDateCreation() {

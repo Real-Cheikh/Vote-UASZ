@@ -72,7 +72,8 @@ public class AuthService {
                 user.getNom(),
                 user.getPrenom(),
                 user.getCategorie() != null ? user.getCategorie().name() : null,
-                roles
+                roles,
+                user.isDoitChangerMotDePasse()
         );
     }
 
@@ -106,7 +107,8 @@ public class AuthService {
                 user.getNom(),
                 user.getPrenom(),
                 user.getCategorie() != null ? user.getCategorie().name() : null,
-                roles
+                roles,
+                user.isDoitChangerMotDePasse()
         );
     }
 

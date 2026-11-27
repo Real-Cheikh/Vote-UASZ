@@ -37,6 +37,9 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.security.initial-admin.prenom:Commission UASZ}")
     private String adminPrenom;
 
+    @Value("${app.security.init-demo-users:false}")
+    private boolean initDemoUsers;
+
     public DataInitializer(RoleRepository roleRepository, UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
@@ -70,11 +73,13 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Compte initial Super-Administrateur créé avec succès : {}", adminEmail);
         }
 
-        // 3. Comptes de démonstration académique si non présents
-        initializeDemoUser("etudiant1@zig.univ.sn", "Etudiant2026!", "Diop", "Moussa", "20210045", UserCategory.ETUDIANT, Set.of(roleElecteur));
-        initializeDemoUser("candidat1@zig.univ.sn", "Candidat2026!", "Sow", "Awa", "20200112", UserCategory.ETUDIANT, Set.of(roleElecteur, roleCandidat));
-        initializeDemoUser("enseignant1@uasz.sn", "Enseignant2026!", "Ndiaye", "Pr. Ousmane", "ENS-9902", UserCategory.ENSEIGNANT, Set.of(roleElecteur));
-        initializeDemoUser("commission@uasz.sn", "Commission2026!", "Sarr", "Fatou", "COM-2026", UserCategory.PAT, Set.of(roleCommission, roleElecteur));
+        // 3. Comptes de démonstration académique (uniquement si explicitement activé par configuration dev/test)
+        if (initDemoUsers) {
+            initializeDemoUser("etudiant1@zig.univ.sn", "Etudiant2026!", "Diop", "Moussa", "20210045", UserCategory.ETUDIANT, Set.of(roleElecteur));
+            initializeDemoUser("candidat1@zig.univ.sn", "Candidat2026!", "Sow", "Awa", "20200112", UserCategory.ETUDIANT, Set.of(roleElecteur, roleCandidat));
+            initializeDemoUser("enseignant1@uasz.sn", "Enseignant2026!", "Ndiaye", "Pr. Ousmane", "ENS-9902", UserCategory.ENSEIGNANT, Set.of(roleElecteur));
+            initializeDemoUser("commission@uasz.sn", "Commission2026!", "Sarr", "Fatou", "COM-2026", UserCategory.PAT, Set.of(roleCommission, roleElecteur));
+        }
     }
 
     private Role getOrCreateRole(RoleName name, String description) {

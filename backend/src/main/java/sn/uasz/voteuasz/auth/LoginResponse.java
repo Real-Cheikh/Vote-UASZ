@@ -12,12 +12,18 @@ public class LoginResponse {
     private String prenom;
     private String categorie;
     private Set<String> roles;
+    private boolean doitChangerMotDePasse;
 
     public LoginResponse() {
     }
 
     public LoginResponse(String token, String refreshToken, Long userId, String email, String nom,
                          String prenom, String categorie, Set<String> roles) {
+        this(token, refreshToken, userId, email, nom, prenom, categorie, roles, false);
+    }
+
+    public LoginResponse(String token, String refreshToken, Long userId, String email, String nom,
+                         String prenom, String categorie, Set<String> roles, boolean doitChangerMotDePasse) {
         this.token = token;
         this.refreshToken = refreshToken;
         this.userId = userId;
@@ -26,6 +32,7 @@ public class LoginResponse {
         this.prenom = prenom;
         this.categorie = categorie;
         this.roles = roles;
+        this.doitChangerMotDePasse = doitChangerMotDePasse;
     }
 
     public String getToken() {
@@ -98,5 +105,13 @@ public class LoginResponse {
 
     public void setRoles(Set<String> roles) {
         this.roles = roles;
+    }
+
+    public boolean isDoitChangerMotDePasse() {
+        return doitChangerMotDePasse;
+    }
+
+    public void setDoitChangerMotDePasse(boolean doitChangerMotDePasse) {
+        this.doitChangerMotDePasse = doitChangerMotDePasse;
     }
 }

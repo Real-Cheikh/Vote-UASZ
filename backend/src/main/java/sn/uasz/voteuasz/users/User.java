@@ -43,6 +43,9 @@ public class User {
     @Column(nullable = false)
     private boolean bloque = false;
 
+    @Column(name = "doit_changer_mot_de_passe", nullable = false)
+    private boolean doitChangerMotDePasse = false;
+
     @Column(name = "date_creation", nullable = false, updatable = false)
     private LocalDateTime dateCreation = LocalDateTime.now();
 
@@ -153,6 +156,14 @@ public class User {
 
     public void setBloque(boolean bloque) {
         this.bloque = bloque;
+    }
+
+    public boolean isDoitChangerMotDePasse() {
+        return doitChangerMotDePasse;
+    }
+
+    public void setDoitChangerMotDePasse(boolean doitChangerMotDePasse) {
+        this.doitChangerMotDePasse = doitChangerMotDePasse;
     }
 
     public LocalDateTime getDateCreation() {

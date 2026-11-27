@@ -62,4 +62,28 @@ public class UserController {
             @RequestParam boolean bloque) {
         return ResponseEntity.ok(ApiResponse.ok("Statut du compte mis à jour", userService.toggleUserStatus(id, actif, bloque)));
     }
+
+    @PostMapping("/commission")
+    @PreAuthorize("hasRole('SUPER_ADMIN_ELECTORAL')")
+    @Operation(summary = "Créer un compte individuel de membre de commission électorale avec mot de passe temporaire robuste")
+    public ResponseEntity<ApiResponse<CommissionMemberResponseDto>> createCommissionMember(@Valid @RequestBody CommissionMemberCreateDto dto) {
+        CommissionMemberResponseDto created = userService.createCommissionMember(dto);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Membre de la commission créé avec succès", created));
+    }
+
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasRole('SUPER_ADMIN_ELECTORAL')")
+    @Operation(summary = "Réinitialiser administrativement le mot de passe d'un compte avec génération d'un mot de passe temporaire")
+    public ResponseEntity<ApiResponse<CommissionMemberResponseDto>> resetPassword(@PathVariable Long id) {
+        CommissionMemberResponseDto response = userService.resetUserPasswordAdmin(id);
+        return ResponseEntity.ok(ApiResponse.ok("Mot de passe temporaire généré avec succès", response));
+    }
+
+    @PostMapping("/deactivate-demo-accounts")
+    @PreAuthorize("hasRole('SUPER_ADMIN_ELECTORAL')")
+    @Operation(summary = "Désactiver et exclure de la connexion tous les comptes de démonstration et de test")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> deactivateDemoAccounts() {
+        return ResponseEntity.ok(ApiResponse.ok("Comptes de démonstration désactivés", userService.deactivateDemoAccounts()));
+    }
 }
