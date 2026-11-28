@@ -86,4 +86,11 @@ public class UserController {
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> deactivateDemoAccounts() {
         return ResponseEntity.ok(ApiResponse.ok("Comptes de démonstration désactivés", userService.deactivateDemoAccounts()));
     }
+
+    @PostMapping("/purge-demo-accounts")
+    @PreAuthorize("hasRole('SUPER_ADMIN_ELECTORAL')")
+    @Operation(summary = "Nettoyage définitif : suppression des comptes démo sans dépendance et archivage mort irréversible de ceux liés à l'historique électoral")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> purgeDemoAccounts() {
+        return ResponseEntity.ok(ApiResponse.ok("Nettoyage définitif des comptes de démonstration terminé", userService.purgeOrArchiveDemoAccounts()));
+    }
 }

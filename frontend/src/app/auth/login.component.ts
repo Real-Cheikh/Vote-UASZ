@@ -94,29 +94,6 @@ import { AuthService } from '../core/services/auth.service';
               }
             </button>
           </form>
-
-          <div class="demo-section">
-            <div class="demo-title">
-              <span>Comptes de Démonstration Académique (1-clic)</span>
-            </div>
-            <div class="demo-grid">
-              <button type="button" class="btn btn-outline btn-xs" (click)="fillDemo('admin.electoral@uasz.sn', 'AdminUasz2026!Securise')">
-                👑 Super Admin
-              </button>
-              <button type="button" class="btn btn-outline btn-xs" (click)="fillDemo('commission@uasz.sn', 'Commission2026!')">
-                ⚖️ Commission
-              </button>
-              <button type="button" class="btn btn-outline btn-xs" (click)="fillDemo('etudiant1@zig.univ.sn', 'Etudiant2026!')">
-                🎓 Étudiant Électeur
-              </button>
-              <button type="button" class="btn btn-outline btn-xs" (click)="fillDemo('candidat1@zig.univ.sn', 'Candidat2026!')">
-                📢 Candidat
-              </button>
-              <button type="button" class="btn btn-outline btn-xs" (click)="fillDemo('enseignant1@uasz.sn', 'Enseignant2026!')">
-                👨‍🏫 Enseignant
-              </button>
-            </div>
-          </div>
         }
 
         <!-- FORMULAIRE D'INSCRIPTION ÉTUDIANTE -->
@@ -293,25 +270,6 @@ import { AuthService } from '../core/services/auth.service';
       font-size: 1rem;
       margin-top: 0.5rem;
     }
-    .demo-section {
-      margin-top: 2rem;
-      padding-top: 1.5rem;
-      border-top: 1px dashed var(--border-color);
-    }
-    .demo-title {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.85rem;
-      text-align: center;
-    }
-    .demo-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.5rem;
-    }
     .btn-xs {
       padding: 0.4rem 0.6rem;
       font-size: 0.75rem;
@@ -352,15 +310,6 @@ export class LoginComponent {
     this.activeTab.set(tab);
     this.errorMessage.set('');
     this.successMessage.set('');
-    this.cdr.markForCheck();
-  }
-
-  fillDemo(email: string, pass: string): void {
-    this.email = email;
-    this.password = pass;
-    this.errorMessage.set('');
-    this.successMessage.set('');
-    this.activeTab.set('login');
     this.cdr.markForCheck();
   }
 

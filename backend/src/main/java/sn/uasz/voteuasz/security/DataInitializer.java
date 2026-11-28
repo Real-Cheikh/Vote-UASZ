@@ -13,6 +13,7 @@ import sn.uasz.voteuasz.roles.RoleRepository;
 import sn.uasz.voteuasz.users.User;
 import sn.uasz.voteuasz.users.UserCategory;
 import sn.uasz.voteuasz.users.UserRepository;
+import sn.uasz.voteuasz.users.UserService;
 
 import java.util.Set;
 
@@ -24,6 +25,7 @@ public class DataInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
 
     @Value("${app.security.initial-admin.email:admin.electoral@uasz.sn}")
     private String adminEmail;
@@ -37,13 +39,14 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.security.initial-admin.prenom:Commission UASZ}")
     private String adminPrenom;
 
-    @Value("${app.security.init-demo-users:false}")
-    private boolean initDemoUsers;
-
-    public DataInitializer(RoleRepository roleRepository, UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public DataInitializer(RoleRepository roleRepository,
+                           UserRepository userRepository,
+                           PasswordEncoder passwordEncoder,
+                           UserService userService) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.userService = userService;
     }
 
     @Override
@@ -52,8 +55,8 @@ public class DataInitializer implements CommandLineRunner {
         // 1. Initialisation des rôles fondamentaux
         Role roleSuperAdmin = getOrCreateRole(RoleName.ROLE_SUPER_ADMIN_ELECTORAL, "Super-administrateur de la plateforme");
         Role roleCommission = getOrCreateRole(RoleName.ROLE_COMMISSION_ELECTORALE, "Membre de la commission électorale");
-        Role roleCandidat = getOrCreateRole(RoleName.ROLE_CANDIDAT, "Candidat aux scrutins");
-        Role roleElecteur = getOrCreateRole(RoleName.ROLE_ELECTEUR, "Électeur universitaire");
+        getOrCreateRole(RoleName.ROLE_CANDIDAT, "Candidat aux scrutins");
+        getOrCreateRole(RoleName.ROLE_ELECTEUR, "Électeur universitaire");
 
         // 2. Initialisation du premier Super Administrateur si non existant
         if (!userRepository.existsByEmail(adminEmail)) {
@@ -73,36 +76,12 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Compte initial Super-Administrateur créé avec succès : {}", adminEmail);
         }
 
-        // 3. Comptes de démonstration académique (uniquement si explicitement activé par configuration dev/test)
-        if (initDemoUsers) {
-            initializeDemoUser("etudiant1@zig.univ.sn", "Etudiant2026!", "Diop", "Moussa", "20210045", UserCategory.ETUDIANT, Set.of(roleElecteur));
-            initializeDemoUser("candidat1@zig.univ.sn", "Candidat2026!", "Sow", "Awa", "20200112", UserCategory.ETUDIANT, Set.of(roleElecteur, roleCandidat));
-            initializeDemoUser("enseignant1@uasz.sn", "Enseignant2026!", "Ndiaye", "Pr. Ousmane", "ENS-9902", UserCategory.ENSEIGNANT, Set.of(roleElecteur));
-            initializeDemoUser("commission@uasz.sn", "Commission2026!", "Sarr", "Fatou", "COM-2026", UserCategory.PAT, Set.of(roleCommission, roleElecteur));
-        }
+        // 3. Purge et archivage sécurisé des comptes de démonstration résiduels
+        userService.purgeOrArchiveDemoAccounts();
     }
 
     private Role getOrCreateRole(RoleName name, String description) {
         return roleRepository.findByName(name)
                 .orElseGet(() -> roleRepository.save(new Role(name, description)));
-    }
-
-    private void initializeDemoUser(String email, String rawPassword, String nom, String prenom,
-                                    String idNumber, UserCategory cat, Set<Role> roles) {
-        if (!userRepository.existsByEmail(email)) {
-            User user = new User();
-            user.setEmail(email);
-            user.setPasswordHash(passwordEncoder.encode(rawPassword));
-            user.setNom(nom);
-            user.setPrenom(prenom);
-            user.setNumeroIdentification(idNumber);
-            user.setTelephone("+221770000000");
-            user.setCategorie(cat);
-            user.setActif(true);
-            user.setBloque(false);
-            user.setRoles(roles);
-            userRepository.save(user);
-            log.info("Compte de test initialisé : {} ({})", email, cat);
-        }
     }
 }

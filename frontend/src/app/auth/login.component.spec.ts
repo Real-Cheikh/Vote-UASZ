@@ -118,10 +118,9 @@ describe('LoginComponent', () => {
     expect(component.errorMessage()).toContain('Un compte existe déjà');
   });
 
-  it('devrait pré-remplir les identifiants avec la méthode fillDemo', () => {
-    component.fillDemo('admin.electoral@uasz.sn', 'AdminPass123!');
-    expect(component.email).toBe('admin.electoral@uasz.sn');
-    expect(component.password).toBe('AdminPass123!');
+  it('devrait garantir que les champs de connexion sont vierges par défaut sans aucun compte démo injecté', () => {
+    expect(component.email).toBe('');
+    expect(component.password).toBe('');
     expect(component.activeTab()).toBe('login');
   });
 });

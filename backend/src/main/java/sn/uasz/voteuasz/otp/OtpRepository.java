@@ -3,6 +3,7 @@ package sn.uasz.voteuasz.otp;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -25,4 +26,8 @@ public interface OtpRepository extends JpaRepository<OtpChallenge, Long> {
 
     @Query("SELECT COUNT(o) FROM OtpChallenge o WHERE o.user.id = :userId AND o.election.id = :electionId AND o.dateCreation >= :since")
     long countChallengesSince(@Param("userId") Long userId, @Param("electionId") Long electionId, @Param("since") OffsetDateTime since);
+
+    @Modifying
+    @Query("DELETE FROM OtpChallenge o WHERE o.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }

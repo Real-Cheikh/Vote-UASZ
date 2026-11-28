@@ -197,4 +197,26 @@ public class UserSecurityAndCommissionTests {
         assertTrue(studentInDb.isActif());
         assertFalse(studentInDb.isBloque());
     }
+
+    @Test
+    @DisplayName("Test 5 : Purge et archivage sécurisé : suppression des comptes démo sans dépendance et archivage mort irréversible")
+    void testPurgeOrArchiveDemoAccounts() {
+        // 1. Créer un compte démo sans dépendance
+        Role roleElecteur = roleRepository.findByName(RoleName.ROLE_ELECTEUR).orElseThrow();
+        User orphanDemo = new User("orphan.demo@zig.univ.sn", passwordEncoder.encode("Pass123!"), "Orphan", "Demo", "ORPHAN-001", "+221770000099", UserCategory.ETUDIANT);
+        orphanDemo.setRoles(Set.of(roleElecteur));
+        orphanDemo = userRepository.save(orphanDemo);
+        Long orphanId = orphanDemo.getId();
+
+        // 2. Exécuter la purge et archivage
+        Map<String, Object> result = userService.purgeOrArchiveDemoAccounts();
+        assertNotNull(result);
+
+        // 3. Vérifier que le compte sans dépendance a bien été SUPPRIMÉ
+        assertTrue(userRepository.findById(orphanId).isEmpty(), "Le compte de démonstration orphelin doit être supprimé définitivement");
+
+        // 4. Vérifier que les comptes institutionnels et réels restent intacts
+        assertTrue(userRepository.findByEmail(superAdmin.getEmail()).isPresent(), "Le super admin officiel doit être préservé");
+        assertTrue(userRepository.findByEmail(realStudent.getEmail()).isPresent(), "L'étudiant réel officiel doit être préservé");
+    }
 }

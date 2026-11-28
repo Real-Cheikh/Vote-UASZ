@@ -11,8 +11,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sn.uasz.voteuasz.audit.AuditService;
 import sn.uasz.voteuasz.auth.ChangePasswordDto;
+import sn.uasz.voteuasz.candidacies.CandidacyRepository;
 import sn.uasz.voteuasz.common.BusinessException;
 import sn.uasz.voteuasz.common.ResourceNotFoundException;
+import sn.uasz.voteuasz.complaints.ComplaintRepository;
+import sn.uasz.voteuasz.eligibility.EligibilityRecord;
+import sn.uasz.voteuasz.eligibility.EligibilityRepository;
+import sn.uasz.voteuasz.otp.OtpRepository;
 import sn.uasz.voteuasz.roles.Role;
 import sn.uasz.voteuasz.roles.RoleName;
 import sn.uasz.voteuasz.roles.RoleRepository;
@@ -42,15 +47,27 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
+    private final CandidacyRepository candidacyRepository;
+    private final EligibilityRepository eligibilityRepository;
+    private final ComplaintRepository complaintRepository;
+    private final OtpRepository otpRepository;
 
     public UserService(UserRepository userRepository,
                        RoleRepository roleRepository,
                        PasswordEncoder passwordEncoder,
-                       AuditService auditService) {
+                       AuditService auditService,
+                       CandidacyRepository candidacyRepository,
+                       EligibilityRepository eligibilityRepository,
+                       ComplaintRepository complaintRepository,
+                       OtpRepository otpRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
+        this.candidacyRepository = candidacyRepository;
+        this.eligibilityRepository = eligibilityRepository;
+        this.complaintRepository = complaintRepository;
+        this.otpRepository = otpRepository;
     }
 
     @Transactional(readOnly = true)
@@ -316,6 +333,65 @@ public class UserService {
         return result;
     }
 
+    /**
+     * Nettoyage définitif et audit approfondi des comptes de démonstration :
+     * - Comptes avec dépendances historiques (candidatures, émargements aVote=true, réclamations) :
+     *   Préservés pour garantir l'intégrité de l'urne et des résultats, mais désactivés définitivement,
+     *   bloqués, mot de passe invalidé de façon irréversible et données directes anonymisées.
+     * - Comptes sans aucune dépendance historique :
+     *   Supprimés proprement et définitivement de la base de données.
+     */
+    @Transactional
+    public Map<String, Object> purgeOrArchiveDemoAccounts() {
+        List<User> allUsers = userRepository.findAll();
+        List<String> retainedArchivedEmails = new ArrayList<>();
+        List<String> deletedSafeEmails = new ArrayList<>();
+
+        for (User u : allUsers) {
+            if (isDemoUserAccount(u)) {
+                Long uid = u.getId();
+                boolean hasCandidacy = !candidacyRepository.findByCandidatId(uid).isEmpty();
+                boolean hasVoted = eligibilityRepository.findByUserId(uid).stream()
+                        .anyMatch(EligibilityRecord::isaVote);
+                boolean hasComplaints = !complaintRepository.findByUserId(uid).isEmpty();
+
+                if (hasCandidacy || hasVoted || hasComplaints) {
+                    // DÉPENDANCE CRITIQUE -> Conservation en archive morte (neutralisation irréversible)
+                    u.setActif(false);
+                    u.setBloque(true);
+                    u.setPasswordHash("REVOKED_HISTORICAL_RECORD_" + UUID.randomUUID());
+                    u.setDoitChangerMotDePasse(false);
+                    u.setTelephone(null); // Anonymisation des données de contact direct
+                    userRepository.save(u);
+                    retainedArchivedEmails.add(u.getEmail());
+                    log.warn("Compte démonstration avec dépendance historique archivé mort et neutralisé : {} (candidature: {}, voté: {}, réclamations: {})",
+                            u.getEmail(), hasCandidacy, hasVoted, hasComplaints);
+                } else {
+                    // AUCUNE DÉPENDANCE HISTORIQUE -> Suppression sûre et définitive
+                    otpRepository.deleteByUserId(uid);
+                    eligibilityRepository.deleteAll(eligibilityRepository.findByUserId(uid));
+                    u.getRoles().clear();
+                    userRepository.saveAndFlush(u);
+                    userRepository.delete(u);
+                    deletedSafeEmails.add(u.getEmail());
+                    log.info("Compte démonstration sans dépendance historique supprimé définitivement : {}", u.getEmail());
+                }
+            }
+        }
+
+        auditService.logEvent("DEMO_ACCOUNTS_PURGED_AND_ARCHIVED",
+                "Nettoyage des comptes de démo : " + deletedSafeEmails.size() + " supprimés définitivement, " + retainedArchivedEmails.size() + " archivés morts avec intégrité préservée",
+                null, "SUCCESS");
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("deletedSafeCount", deletedSafeEmails.size());
+        result.put("deletedSafeAccounts", deletedSafeEmails);
+        result.put("retainedArchivedCount", retainedArchivedEmails.size());
+        result.put("retainedArchivedAccounts", retainedArchivedEmails);
+        result.put("message", "Nettoyage définitif des comptes démo effectué : les comptes sans dépendance ont été supprimés, les comptes liés à l'historique électoral ont été archivés et définitivement verrouillés.");
+        return result;
+    }
+
     public boolean isDemoUserAccount(User user) {
         if (user == null || user.getEmail() == null) return false;
         // Protection absolue : ne JAMAIS désactiver un Super Administrateur
@@ -339,6 +415,7 @@ public class UserService {
                email.contains("synth_") ||
                email.contains("test") ||
                email.contains("audit") ||
+               email.contains("demo") ||
                numId.contains("test") ||
                numId.contains("audit") ||
                numId.contains("demo");
